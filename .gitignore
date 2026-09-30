@@ -1,0 +1,43 @@
+# Local development and private materials
+/.private/
+/.agents/
+/.codex/
+/.aws/
+/AGENTS.md
+/samples/
+/build/
+/artifacts/
+
+# Build, test and editor output
+**/bin/
+**/obj/
+.vs/
+.idea/
+.vscode/
+TestResults/
+*.user
+*.suo
+__pycache__/
+*.pyc
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Logs, diagnostics and temporary files
+*.log
+*.tmp
+*.dmp
+*.gcdump
+*.nettrace
+*.etl
+.DS_Store
+Thumbs.db
+desktop.ini

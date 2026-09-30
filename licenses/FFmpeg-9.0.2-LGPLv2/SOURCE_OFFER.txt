@@ -1,0 +1,21 @@
+FFmpeg 9.0.2 — LGPLv2.1 build (win-x64)
+
+This distribution contains FFmpeg together with a set of statically-linked
+third-party libraries, produced by an automated, public, reproducible build
+recipe:
+
+    https://github.com/devenvy/ffmpeg (ref fcd83b13adbbbdf616f3a48a565f1913dbdfa403)
+
+That repository's build script pins the exact version of FFmpeg and of every
+bundled library, and records where each one comes from. The repository — together
+with the corresponding unmodified upstream FFmpeg release at
+https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz — is the complete
+corresponding source for the FFmpeg libraries in this build, as required by the
+GNU LGPLv2.1. Everything is public; no request to the distributor is necessary
+to obtain it.
+
+Every bundled library, with the exact version and upstream origin used for this
+build, is recorded in that repository's deps.json. Each library's own license text
+accompanies this notice under legal/licenses/<library>/, alongside the governing
+license text for this build's cell. GPL builds additionally include the x264 and
+x265 software encoders.

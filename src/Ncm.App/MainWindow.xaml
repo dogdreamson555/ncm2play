@@ -1,0 +1,177 @@
+<Window
+    x:Class="Ncm.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Ncm.App">
+    <Window.SystemBackdrop>
+        <MicaBackdrop Kind="Base" />
+    </Window.SystemBackdrop>
+    <Grid x:Name="WindowBackgroundGrid" Background="Transparent"
+          AllowDrop="True" AutomationProperties.AutomationId="WindowDropTarget">
+    <Grid x:Name="RootGrid" Width="1280" MaxWidth="1280" HorizontalAlignment="Center" Padding="24,0,24,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <SelectorBar x:Name="ModeSelector" Grid.Row="0" SelectionChanged="ModeSelector_SelectionChanged" AutomationProperties.AutomationId="ModeSelector">
+            <SelectorBarItem x:Name="SimpleModeItem" Text="简单模式" />
+            <SelectorBarItem x:Name="AdvancedModeItem" Text="高级模式" />
+        </SelectorBar>
+
+        <ScrollViewer x:Name="StatusMessageScrollViewer" Grid.Row="1" MaxHeight="120" VerticalScrollBarVisibility="Auto">
+            <InfoBar x:Name="StatusInfoBar" IsOpen="False" IsClosable="True" AutomationProperties.AutomationId="StatusInfoBar" />
+        </ScrollViewer>
+
+        <Border x:Name="DropZoneBorder" Grid.Row="2" Margin="0,6,0,0" Padding="18" CornerRadius="8" BorderThickness="1"
+                BorderBrush="{ThemeResource SystemControlForegroundBaseLowBrush}"
+                Background="{ThemeResource ControlFillColorDefaultBrush}">
+            <Grid x:Name="ImportActionsGrid" MinHeight="88" Background="Transparent">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+                    <TextBlock x:Name="DropPromptTextBlock" HorizontalAlignment="Center"
+                               Text="将 NCM 文件或文件夹拖入窗口任意位置" TextWrapping="Wrap" />
+                    <StackPanel x:Name="InputActionsPanel" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                        <Button x:Name="AddFilesButton" Content="添加文件" Click="AddFiles_Click" AutomationProperties.AutomationId="AddFilesButton" />
+                        <Button x:Name="AddFolderButton" Content="添加文件夹" Click="AddFolder_Click" AutomationProperties.AutomationId="AddFolderButton" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="3" Margin="0,14,0,0" ColumnSpacing="8">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBox x:Name="OutputDirectoryTextBox" Header="输出目录" IsReadOnly="True"
+                     PlaceholderText="请选择保存位置" AutomationProperties.AutomationId="OutputDirectoryTextBox" />
+            <Button x:Name="ChooseOutputButton" Grid.Column="1" VerticalAlignment="Bottom" Content="选择目录"
+                    Click="ChooseOutput_Click" AutomationProperties.AutomationId="ChooseOutputButton" />
+        </Grid>
+
+        <Grid x:Name="MainContentGrid" Grid.Row="4" Margin="0,14,0,0" ColumnSpacing="16">
+            <Grid.ColumnDefinitions><ColumnDefinition x:Name="SettingsColumn" Width="0" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+
+            <SelectorBar x:Name="CompactViewSelector" Grid.Column="1" Grid.Row="0" Margin="0,0,0,10" Visibility="Collapsed"
+                         SelectionChanged="CompactViewSelector_SelectionChanged"
+                         AutomationProperties.AutomationId="CompactViewSelector">
+                <SelectorBarItem x:Name="CompactFilesItem" Text="文件" />
+                <SelectorBarItem x:Name="CompactSettingsItem" Text="设置" />
+            </SelectorBar>
+
+            <ScrollViewer x:Name="AdvancedSettingsPanel" Grid.Column="0" Grid.Row="1"
+                          Visibility="Collapsed" VerticalScrollBarVisibility="Hidden"
+                          AutomationProperties.AutomationId="AdvancedSettingsPanel">
+                <StackPanel Spacing="12" Padding="0,0,8,8">
+                    <StackPanel x:Name="BatchSettingsPanel" Spacing="12">
+                        <local:ComboBoxWithoutWheel x:Name="AudioFormatComboBox" Header="目标格式" HorizontalAlignment="Stretch" SelectedIndex="0"
+                                  SelectionChanged="AdvancedSetting_Changed" AutomationProperties.AutomationId="AudioFormatComboBox">
+                            <ComboBoxItem Content="保留原格式" /><ComboBoxItem Content="MP3" /><ComboBoxItem Content="FLAC" />
+                        </local:ComboBoxWithoutWheel>
+                        <local:ComboBoxWithoutWheel x:Name="Mp3BitrateComboBox" Header="MP3 码率（kbps）" HorizontalAlignment="Stretch"
+                                  SelectedIndex="1" Visibility="Collapsed" SelectionChanged="AdvancedSetting_Changed"
+                                  AutomationProperties.AutomationId="Mp3BitrateComboBox">
+                            <ComboBoxItem Content="128" /><ComboBoxItem Content="192" /><ComboBoxItem Content="256" /><ComboBoxItem Content="320" />
+                        </local:ComboBoxWithoutWheel>
+                        <NumberBox x:Name="FlacLevelNumberBox" Header="FLAC 压缩级别（0–8）" Minimum="0" Maximum="8"
+                                   Value="5" Visibility="Collapsed" ValueChanged="AdvancedNumber_Changed"
+                                   AutomationProperties.AutomationId="FlacLevelNumberBox" />
+                        <TextBlock x:Name="AudioAdjustmentTextBlock" Visibility="Collapsed" TextWrapping="Wrap" />
+                        <local:ComboBoxWithoutWheel x:Name="CoverComboBox" Header="批量封面" HorizontalAlignment="Stretch" SelectedIndex="0"
+                                  SelectionChanged="AdvancedSetting_Changed" AutomationProperties.AutomationId="CoverComboBox">
+                            <ComboBoxItem Content="保留原封面" /><ComboBoxItem Content="不保留" /><ComboBoxItem Content="导入图片" />
+                        </local:ComboBoxWithoutWheel>
+                        <NumberBox x:Name="OriginalCoverEdgeNumberBox" Header="原封面最长边（0 表示不缩小）"
+                                   Minimum="0" Maximum="10000" Value="0" ValueChanged="AdvancedNumber_Changed"
+                                   AutomationProperties.AutomationId="OriginalCoverEdgeNumberBox" />
+                        <RichTextBlock x:Name="ImportedCoverPicker" Visibility="Collapsed"
+                                       TextWrapping="Wrap" IsTextSelectionEnabled="True">
+                            <Paragraph>
+                                <InlineUIContainer>
+                                    <Button x:Name="ChooseBatchCoverButton" Content="选择图片" Margin="0,0,8,-6"
+                                            Click="ChooseBatchCover_Click" AutomationProperties.AutomationId="ChooseBatchCoverButton" />
+                                </InlineUIContainer>
+                                <Run x:Name="BatchCoverPathRun" Text="未选择图片" />
+                            </Paragraph>
+                        </RichTextBlock>
+                        <local:ComboBoxWithoutWheel x:Name="ClassificationComboBox" Header="分类" HorizontalAlignment="Stretch" SelectedIndex="0"
+                                  SelectionChanged="AdvancedSetting_Changed" AutomationProperties.AutomationId="ClassificationComboBox">
+                            <ComboBoxItem Content="不分类" /><ComboBoxItem Content="按专辑" /><ComboBoxItem Content="按歌手" />
+                        </local:ComboBoxWithoutWheel>
+                        <local:ComboBoxWithoutWheel x:Name="NamingComboBox" Header="命名" HorizontalAlignment="Stretch" SelectedIndex="0"
+                                  SelectionChanged="AdvancedSetting_Changed" AutomationProperties.AutomationId="NamingComboBox">
+                            <ComboBoxItem Content="源文件名" /><ComboBoxItem Content="歌手 - 歌曲名" /><ComboBoxItem Content="歌曲名 - 歌手" />
+                        </local:ComboBoxWithoutWheel>
+                        <RadioButtons x:Name="NumberingModeRadioButtons" Header="文件标号" SelectedIndex="0" MaxColumns="1"
+                                      SelectionChanged="AdvancedSetting_Changed" AutomationProperties.AutomationId="NumberingModeRadioButtons">
+                            <RadioButton Content="不添加标号" />
+                            <RadioButton Content="根据专辑曲序来标号" />
+                            <RadioButton Content="从上到下进行标号" />
+                        </RadioButtons>
+                    </StackPanel>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <Grid x:Name="FilesPanel" Grid.Column="1" Grid.Row="1">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Grid Margin="0,0,0,8" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ItemsHeadingTextBlock" Style="{ThemeResource SubtitleTextBlockStyle}" Text="文件（0）" />
+                    <Button x:Name="SelectButton" Grid.Column="1" Content="选择" Click="Select_Click"
+                            IsEnabled="False" AutomationProperties.AutomationId="SelectButton" />
+                    <Button x:Name="RemoveSelectedButton" Grid.Column="2" Content="移除所选" Click="RemoveSelected_Click"
+                            IsEnabled="False" Visibility="Collapsed" ToolTipService.ToolTip="只从队列移除，不删除源文件"
+                            AutomationProperties.AutomationId="RemoveSelectedButton" />
+                    <Button x:Name="ClearButton" Grid.Column="3" Content="移除全部" Click="Clear_Click"
+                            IsEnabled="False" ToolTipService.ToolTip="只清空队列，不删除源文件"
+                            AutomationProperties.AutomationId="ClearButton" />
+                </Grid>
+                <Grid Grid.Row="1">
+                    <ListView x:Name="FilesListView" ItemsSource="{x:Bind Rows}" SelectionMode="Single"
+                              AllowDrop="True" CanDragItems="True" CanReorderItems="True"
+                              DragItemsStarting="FilesListView_DragItemsStarting" DragItemsCompleted="FilesListView_DragItemsCompleted"
+                              SelectionChanged="FilesListView_SelectionChanged" AutomationProperties.AutomationId="FilesListView">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:ConversionRow">
+                                <Grid Padding="4,8" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Text="{x:Bind FileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{x:Bind OutputFileName, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind StatusText, Mode=OneWay}"
+                                               VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock x:Name="EmptyListMessage" Text="尚未添加文件" HorizontalAlignment="Center"
+                               VerticalAlignment="Center" IsHitTestVisible="False" />
+                </Grid>
+                <TextBlock x:Name="SelectedDetailTextBlock" Grid.Row="2" Margin="0,8,0,0" Visibility="Collapsed"
+                           TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
+                           IsTextSelectionEnabled="True" AutomationProperties.AutomationId="SelectedDetailTextBlock" />
+            </Grid>
+        </Grid>
+
+        <Grid Grid.Row="5" Margin="0,6,0,0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+            <TextBlock x:Name="ProgressTextBlock" Grid.ColumnSpan="3" Text="添加文件后选择输出目录" />
+            <ProgressBar x:Name="BatchProgressBar" Grid.Row="1" Minimum="0" Maximum="1" Value="0" VerticalAlignment="Center" />
+            <Button x:Name="StartButton" Grid.Row="1" Grid.Column="1" Content="开始转换" Click="Start_Click"
+                    Style="{StaticResource AccentButtonStyle}" AutomationProperties.AutomationId="StartButton" />
+            <Button x:Name="CancelButton" Grid.Row="1" Grid.Column="2" Content="取消" Click="Cancel_Click"
+                    IsEnabled="False" AutomationProperties.AutomationId="CancelButton" />
+        </Grid>
+    </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,15 @@
+NCM Converter
+
+NCM format and decryption reference:
+https://github.com/yoki123/ncmdump
+Reference commit: 62d8cd8f56907707bfcf87b3677e2e6e1371af0a
+
+This project retains the upstream Apache-2.0 LICENSE and attribution. The current
+C# implementation adds bounded parsing, complete streaming output, safe output
+planning, metadata and cover handling, audio transcoding, queues and a WinUI UI.
+
+Old recovered Go code, decompiled C-like analysis files, wrapper strings and
+original executable samples are not included in this public source tree.
+
+Third-party components retain their own licenses and copyright notices under
+licenses/. The project license does not replace those component licenses.

@@ -1,0 +1,14 @@
+FFmpeg 9.0.2 — win-x64
+
+EFFECTIVE LICENSE:  LGPLv2.1 (GNU Lesser General Public License, version 2.1)
+
+Governing license text: COPYING.LGPLv2.1 (plus COPYING.GPLv2, which it extends)
+
+This is a VERSION 2 build (App-Store-safe): it does NOT use --enable-version3
+  and links no Apache-2.0 dependency. TLS is the OS-native SChannel backend, which is unaffected by the version split. Vulkan is disabled.
+
+Bundled third-party dependencies: this artifact incorporates several libraries (codecs,
+TLS, text shaping, resampling, …). Each one's own license text is in the licenses/
+subdirectory of this directory — that attribution travels with the binary as required.
+
+Corresponding source: see SOURCE_OFFER.txt in this directory.
