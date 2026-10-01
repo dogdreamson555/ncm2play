@@ -65,6 +65,14 @@ public sealed partial class NcmMediaService
         }
     }
 
+    internal static TagFile OpenTagFile(string path, NcmAudioFormat format) =>
+        format switch
+        {
+            NcmAudioFormat.Mp3 => new TagLib.Mpeg.AudioFile(path, ReadStyle.None),
+            NcmAudioFormat.Flac => new TagLib.Flac.File(path, ReadStyle.None),
+            _ => throw new UnsupportedFormatException()
+        };
+
     public async Task<AudioExportPreview> PreviewAsync(
         string inputPath,
         MediaExportOptions? options = null,
@@ -112,10 +120,10 @@ public sealed partial class NcmMediaService
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            using var source = TagFile.Create(sourceAudioPath, ReadStyle.None);
+            using var source = OpenTagFile(sourceAudioPath, inspection.Format);
             using var target = sourceAudioPath == audioPath
                 ? null
-                : TagFile.Create(audioPath, ReadStyle.None);
+                : OpenTagFile(audioPath, outputFormat);
             var file = target ?? source;
             var title = plannedItem?.Title ?? FirstText(
                 inspection.Metadata?.Title,

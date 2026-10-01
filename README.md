@@ -43,15 +43,35 @@ dotnet test tests\Ncm.App.Tests\Ncm.App.Tests.csproj -c Release -p:Platform=x64
 
 自动化测试使用合成 NCM 数据和 [自制音频夹具](tests/Ncm.Media.Tests/Fixtures/README.md)，不依赖真实音乐。用于本机手动验证的真实文件放在被 Git 忽略的 `samples/` 中。
 
-## 发布目录
+## 安装与发布
 
-```powershell
-dotnet publish src\Ncm.App\Ncm.App.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:PublishSingleFile=false -o artifacts\publish\win-x64
+面向 Windows 11 x64 发布完整离线的 `setup.exe`。安装到当前用户目录，无需管理员权限，也无需预装 .NET、Windows App SDK 或图片扩展。安装器可创建开始菜单和可选的桌面快捷方式；卸载保留用户数据及转换出的音乐。
+
+程序在 `%LOCALAPPDATA%\NcmConverter` 创建 `settings.json` 占位文件并追加 `startup.log`；存储不可用时仍允许启动。当前尚未保存和恢复界面设置。
+
+### 制作安装包
+
+除 .NET 10 SDK 外，还需要 Visual Studio / Build Tools 的 C++ 桌面开发工具、Windows SDK，以及 Inno Setup 7.0.2 或更新版本。媒体库使用 MSYS2 UCRT64 编译，构建目录的完整路径不能包含空格或其他空白字符；在其 UCRT64 终端安装构建工具：
+
+```bash
+pacman -S --needed base-devel mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-nasm mingw-w64-ucrt-x86_64-meson mingw-w64-ucrt-x86_64-ninja
 ```
 
-发布时保留整个目录，包括 `Ncm.App.pri`、`*.xbf`、.NET、Windows App SDK 和媒体运行库文件，以及 `licenses/`。程序在 `%LOCALAPPDATA%\NcmConverter` 创建 `settings.json` 占位文件并追加 `startup.log`；存储不可用时仍允许启动。当前尚未保存和恢复界面设置，干净 Windows 11 x64 环境中的完整部署验证仍待完成。
+在仓库根目录的 PowerShell 中执行：
 
-GitHub Actions 发布流程尚未实现。
+```powershell
+.\tools\Build-NativeMedia.ps1 -Msys2Root C:\msys64
+.\tools\Build-Installer.ps1
+.\tools\Build-SourceArchive.ps1
+```
+
+构建工具需要联网恢复 NuGet 包和下载已固定版本、校验 SHA-256 的源码；生成的安装包安装和运行均不需要联网。ISCC 未加入 PATH 时，可向 `Build-Installer.ps1` 传入 `-IsccPath`。NASM、Meson、Ninja 在其他目录时，可向 `Build-NativeMedia.ps1` 传入 `-ExtraToolPath`。
+
+安装包输出为 `artifacts/installer/setup.exe`，附有 `setup.exe.sha256`。发布时还需提供 `artifacts/release-sources/ncm-sources.zip` 和对应校验文件，包含本项目、TagLibSharp 和媒体库的对应源码及重建材料；它是单独的开发者下载，不进入安装包。修改 LGPL 库的步骤见 [重建说明](licenses/REBUILD.md)。
+
+发布配置使用 NativeAOT、按需引用 Windows App SDK，并只部署 MP3/FLAC 音频与 AVIF/HEIC 图片处理所需的五个 FFmpeg 共享库；开发和普通测试仍可使用完整的 NuGet 媒体后端。安装器采用 LZMA2 整体压缩，排除调试符号。
+
+GitHub Actions 发布流程尚未实现；干净 Windows 11 x64 环境中的完整部署验证仍待完成。
 
 ## 许可与来源
 

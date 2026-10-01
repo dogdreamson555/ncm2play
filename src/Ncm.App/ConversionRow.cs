@@ -4,7 +4,7 @@ using Ncm.Core;
 
 namespace Ncm.App;
 
-public sealed class ConversionRow : INotifyPropertyChanged
+public sealed partial class ConversionRow : INotifyPropertyChanged
 {
     private string _targetPath = string.Empty;
     private string _outputFileName = string.Empty;

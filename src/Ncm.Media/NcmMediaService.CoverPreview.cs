@@ -1,8 +1,6 @@
 using System.Text;
 using Ncm.Core;
-using TagLib;
 using LocalFile = System.IO.File;
-using TagFile = TagLib.File;
 
 namespace Ncm.Media;
 
@@ -40,7 +38,7 @@ public sealed partial class NcmMediaService
                 {
                     var exported = await _core.ExportAsync(inputPath, stageDirectory, cancellationToken);
                     decryptedPath = exported.OutputPath;
-                    using var audio = TagFile.Create(decryptedPath, ReadStyle.None);
+                    using var audio = OpenTagFile(decryptedPath, inspection.Format);
                     bytes = GetExistingPicture(audio, inspection.Format)?.Data;
                 }
                 finally

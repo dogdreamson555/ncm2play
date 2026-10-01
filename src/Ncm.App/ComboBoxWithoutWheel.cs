@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml.Input;
 
 namespace Ncm.App;
 
-public sealed class ComboBoxWithoutWheel : ComboBox
+public sealed partial class ComboBoxWithoutWheel : ComboBox
 {
     protected override void OnPointerWheelChanged(PointerRoutedEventArgs e)
     {

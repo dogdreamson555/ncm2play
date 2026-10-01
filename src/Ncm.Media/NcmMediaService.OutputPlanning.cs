@@ -1,6 +1,8 @@
+using System.Buffers;
+using System.Text;
+using System.Text.Json;
 using Ncm.Core;
 using TagLib;
-using TagFile = TagLib.File;
 using LocalFile = System.IO.File;
 
 namespace Ncm.Media;
@@ -21,8 +23,8 @@ public sealed partial class NcmMediaService
             var source = await _core.ExportAsync(inputPath, stageDirectory, cancellationToken);
             decryptedPath = source.OutputPath;
             cancellationToken.ThrowIfCancellationRequested();
-            using var audio = TagFile.Create(decryptedPath, ReadStyle.None);
             var inspection = source.Inspection;
+            using var audio = OpenTagFile(decryptedPath, inspection.Format);
             var title = FirstText(inspection.Metadata?.Title, audio.Tag.Title,
                 Path.GetFileNameWithoutExtension(inspection.SourcePath));
             var artists = SelectArtists(inspection.Metadata?.Artists, audio.Tag.Performers);
@@ -67,9 +69,25 @@ public sealed partial class NcmMediaService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        return names.Length > 0
-            ? "tags:" + System.Text.Json.JsonSerializer.Serialize(new[] { album ?? string.Empty }.Concat(names))
-            : null;
+        if (names.Length == 0)
+        {
+            return null;
+        }
+
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue(album ?? string.Empty);
+            foreach (var name in names)
+            {
+                writer.WriteStringValue(name);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        return "tags:" + Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     public async Task<OutputPlan> PlanOutputsAsync(
