@@ -1,0 +1,146 @@
+name: Publish release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: windows-2025
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2
+        with:
+          global-json-file: global.json
+
+      - name: Resolve version and check existing release
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $versionOutput = & dotnet msbuild .\src\Ncm.App\Ncm.App.csproj '-getProperty:Version' '-p:Configuration=Release' '-p:Platform=x64' -nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the application version.' }
+          $version = (@($versionOutput) -join '').Trim()
+          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+            throw "Expected a three-part release version, received: $version"
+          }
+          foreach ($part in $version.Split('.')) {
+            $number = 0
+            if (-not [int]::TryParse($part, [ref]$number) -or $number -gt 65535) {
+              throw "Version components must be between 0 and 65535: $version"
+            }
+          }
+          $tag = "v$version"
+          $releaseTags = @(& gh api "repos/$env:GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not check existing releases.' }
+          if ($releaseTags -contains $tag) { throw "Release $tag already exists; increment the project version." }
+          $tagRefs = @(& git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
+          if ($LASTEXITCODE -ne 0) { throw 'Could not check the release tag.' }
+          if ($tagRefs.Count -gt 0) {
+            $peeled = @($tagRefs | Where-Object { $_.EndsWith("refs/tags/$tag^{}") })
+            $tagCommit = if ($peeled.Count -gt 0) { ($peeled[0] -split '\s+')[0] } else { ($tagRefs[0] -split '\s+')[0] }
+            if ($tagCommit -ne $env:GITHUB_SHA) { throw "Tag $tag belongs to a different commit." }
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Restore and test
+        run: |
+          dotnet restore .\Ncm.sln -p:Platform=x64
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency restore failed.' }
+          dotnet test .\Ncm.sln -c Release -p:Platform=x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Module tests failed.' }
+
+      - name: Set up native build tools
+        id: msys2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-meson
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Set up Inno Setup
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.0-x64.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $installer
+          $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f') {
+            throw 'Inno Setup installer SHA-256 mismatch.'
+          }
+          $compilerRoot = Join-Path $env:RUNNER_TEMP 'inno-7.1.0'
+          $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=`"$compilerRoot`"")
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          $compiler = Join-Path $compilerRoot 'ISCC.exe'
+          if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw 'ISCC.exe was not installed.' }
+          "INNO_COMPILER=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build release assets
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          .\tools\Build-NativeMedia.ps1 -Msys2Root $env:MSYS2_ROOT
+          .\tools\Build-Installer.ps1 -Version $env:APP_VERSION -IsccPath $env:INNO_COMPILER
+          .\tools\Build-SourceArchive.ps1
+
+      - name: Publish GitHub Release
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @('artifacts/installer/setup.exe', 'artifacts/release-sources/third-party-sources.zip')
+          foreach ($asset in $assets) {
+            if (-not (Test-Path -LiteralPath $asset -PathType Leaf) -or (Get-Item -LiteralPath $asset).Length -le 0) {
+              throw "Release asset is missing or empty: $asset"
+            }
+          }
+          $tag = "v$env:APP_VERSION"
+          $releaseTags = @(& gh api "repos/$env:GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not recheck existing releases.' }
+          if ($releaseTags -contains $tag) { throw "Release $tag already exists; refusing to overwrite it." }
+          $tagRefs = @(& git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
+          if ($LASTEXITCODE -ne 0) { throw 'Could not recheck the release tag.' }
+          if ($tagRefs.Count -gt 0) {
+            $peeled = @($tagRefs | Where-Object { $_.EndsWith("refs/tags/$tag^{}") })
+            $tagCommit = if ($peeled.Count -gt 0) { ($peeled[0] -split '\s+')[0] } else { ($tagRefs[0] -split '\s+')[0] }
+            if ($tagCommit -ne $env:GITHUB_SHA) { throw "Tag $tag belongs to a different commit." }
+          }
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          $notes = @(
+            'Windows 11 x64 offline installer.',
+            '',
+            "[Third-party notices](https://github.com/$env:GITHUB_REPOSITORY/blob/$tag/licenses/README.md)",
+            "[Corresponding third-party sources](https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/third-party-sources.zip)",
+            'Application source and build scripts are included in the Source code downloads below.'
+          ) -join [Environment]::NewLine
+          [IO.File]::WriteAllText($notesPath, $notes, [Text.UTF8Encoding]::new($false))
+          & gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "NCM 转换器 $env:APP_VERSION" --notes-file $notesPath --generate-notes --latest=true
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed.' }

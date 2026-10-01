@@ -1,0 +1,68 @@
+# 开发、构建与发布
+
+工程使用 C#、.NET 10 和 WinUI 3，目标平台为 Windows 11 x64。
+
+## 工程结构
+
+```text
+src/Ncm.Core/       NCM 解析、解密、输出规划和队列
+src/Ncm.Media/      标签、封面和音频转码
+src/Ncm.App/        WinUI 3 界面和应用生命周期
+tests/             自动化测试与自制音频夹具
+licenses/          第三方许可、声明和源码获取信息
+tools/             媒体库、安装器和源码附件构建脚本
+```
+
+## 构建与运行
+
+使用 [global.json](../global.json) 固定的 .NET 10.0.303 SDK，以及 Visual Studio / Build Tools 的 C++ 桌面开发工具和 Windows SDK。在仓库根目录执行：
+
+```powershell
+dotnet build Ncm.sln -c Release -p:Platform=x64
+$outputDir = Resolve-Path 'src\Ncm.App\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64'
+Start-Process (Join-Path $outputDir 'Ncm.App.exe') -WorkingDirectory $outputDir
+```
+
+程序在 `%LOCALAPPDATA%\NcmConverter` 创建 `settings.json` 占位文件并追加 `startup.log`；存储不可用时仍允许启动。当前尚未保存和恢复界面设置。
+
+## 测试
+
+```powershell
+dotnet test tests\Ncm.Core.Tests\Ncm.Core.Tests.csproj -c Release
+dotnet test tests\Ncm.Media.Tests\Ncm.Media.Tests.csproj -c Release
+dotnet test tests\Ncm.App.Tests\Ncm.App.Tests.csproj -c Release -p:Platform=x64
+```
+
+自动化测试使用合成 NCM 数据和[自制音频夹具](../tests/Ncm.Media.Tests/Fixtures/README.md)。用于本机手动验证的真实文件放在被 Git 忽略的 `samples/` 中。
+
+## 制作安装包
+
+除了上述 SDK 和 C++ 工具，还需要 PowerShell 7.4 或更新版本、Inno Setup 7.0.2 或更新版本（Actions 固定为 7.1.0），以及 MSYS2 UCRT64 工具链。构建目录的完整路径不能包含空格或其他空白字符；在 MSYS2 UCRT64 终端安装构建工具：
+
+```bash
+pacman -S --needed base-devel mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-nasm mingw-w64-ucrt-x86_64-meson mingw-w64-ucrt-x86_64-ninja
+```
+
+在仓库根目录的 PowerShell 7 中执行：
+
+```powershell
+.\tools\Build-NativeMedia.ps1 -Msys2Root C:\msys64
+.\tools\Build-Installer.ps1
+.\tools\Build-SourceArchive.ps1
+```
+
+构建需要联网恢复 NuGet 包和下载固定版本、校验 SHA-256 的源码。ISCC 未加入 PATH 时，可向 `Build-Installer.ps1` 传入 `-IsccPath`；NASM、Meson、Ninja 在其他目录时，可向 `Build-NativeMedia.ps1` 传入 `-ExtraToolPath`。
+
+安装包输出为 `artifacts/installer/setup.exe`。第三方源码输出为 `artifacts/release-sources/third-party-sources.zip`，包含 FFmpeg、LAME、dav1d 原始源码，精简的 TagLibSharp 源码，哈希和构建记录；不进入安装包。本项目源码和构建脚本由 Release 的 Source code 下载提供。脚本生成的 `.sha256` 文件用于本地核对，Release 显示 GitHub 自动计算的 SHA-256。修改 LGPL 库的步骤见[重建说明](../licenses/REBUILD.md)。
+
+发布使用 NativeAOT、按需引用 Windows App SDK，并只部署 MP3/FLAC 音频与 AVIF/HEIC 图片处理所需的五个 FFmpeg 共享库；开发和普通测试使用完整的 NuGet 媒体后端。安装器采用 LZMA2 整体压缩，排除调试符号。
+
+## GitHub Actions 发布
+
+1. 更新 `src/Ncm.App/Ncm.App.csproj` 的 `Version`（例如 `1.0.1`），完成本次改动的检查并推送到 `main`。
+2. 在 [Actions](https://github.com/dogdreamson555/ncm2play/actions/workflows/release.yml) 打开 **Publish release**，选择 `main` 并点击 **Run workflow**。
+3. 工作流自动运行三个模块的测试、构建媒体库和安装包，发布 `v<Version>` 并标记为 Latest。只上传 `setup.exe` 和 `third-party-sources.zip`，项目源码自动附带。
+
+工作流使用内置 `GITHUB_TOKEN`。应用与安装器使用同一版本；已有同名 Release 时停止，已有同名标签必须对应本次提交。项目初始版本为 `1.0.0`。
+
+发布前按改动实测；首次启用以及部署配置或媒体依赖变更时，在无预装 .NET / Windows App SDK 的断网 Windows 11 x64 环境验证部署。该干净环境验证仍待完成。工作流会直接正式发布，发布后再下载成品检查安装、启动和代表性转换；发现问题时修复并发布新版本。

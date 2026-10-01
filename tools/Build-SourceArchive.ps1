@@ -1,3 +1,5 @@
+#requires -Version 7.4
+
 [CmdletBinding()]
 param()
 
@@ -10,27 +12,33 @@ $artifactRoot = Join-Path $repoRoot 'artifacts'
 $releaseSourceRoot = Join-Path $artifactRoot 'release-sources'
 $nativeSourceRoot = Join-Path $artifactRoot 'native-build\win-x64\sources'
 $nativeMetadataPath = Join-Path $artifactRoot 'native\win-x64\build-metadata.json'
-$archivePath = Join-Path $releaseSourceRoot 'ncm-sources.zip'
+$archivePath = Join-Path $releaseSourceRoot 'third-party-sources.zip'
 $checksumPath = "$archivePath.sha256"
+$fixedZipTime = [DateTimeOffset]::new(1980, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+
 Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.Formats.Tar
 
 $nativeSources = @(
     [pscustomobject]@{
-        Name = 'FFmpeg 9.0.2'
+        Name = 'FFmpeg'
+        Version = '9.0.2'
         Archive = 'ffmpeg-9.0.2.tar.xz'
         Url = 'https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz'
         Sha256 = '8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e'
         License = 'LGPL-2.1-or-later'
     }
     [pscustomobject]@{
-        Name = 'LAME 3.100'
+        Name = 'LAME'
+        Version = '3.100'
         Archive = 'lame-3.100.tar.gz'
         Url = 'https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz'
         Sha256 = 'ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e'
         License = 'LGPL-2.0-or-later'
     }
     [pscustomobject]@{
-        Name = 'dav1d 1.5.3'
+        Name = 'dav1d'
+        Version = '1.5.3'
         Archive = 'dav1d-1.5.3.tar.xz'
         Url = 'https://downloads.videolan.org/pub/videolan/dav1d/1.5.3/dav1d-1.5.3.tar.xz'
         Sha256 = '732010aa5ef461fa93355ed2c6c5fedb48ddc4b74e697eaabe8907eaeb943011'
@@ -39,14 +47,17 @@ $nativeSources = @(
 )
 
 $tagLibSource = [pscustomobject]@{
-    Name = 'TagLibSharp 2.3.0'
+    Name = 'TagLibSharp'
+    Version = '2.3.0'
     Archive = 'taglib-sharp-2.3.0.tar.gz'
+    SlimArchive = 'taglib-sharp-2.3.0-source.zip'
     Url = 'https://codeload.github.com/mono/taglib-sharp/tar.gz/b5ae84f2e84087bf160bb0471420200dd2b5d809'
     Commit = 'b5ae84f2e84087bf160bb0471420200dd2b5d809'
-    Tag = 'TaglibSharp-2.3.0.0'
     Sha256 = '2e54eb7382991caeafd2ac414ca5ab6ca2a4d2b5fe9bba4d8abff3fc1b308195'
     License = 'LGPL-2.1-only'
 }
+
+$tagLibExcludedPaths = @('examples/', 'src/Debug/', 'src/TaglibSharp.Tests/', 'tests/')
 
 function Get-Sha256 {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -72,20 +83,13 @@ function Assert-SafeDirectory {
 
     if (Test-Path -LiteralPath $Path) {
         $item = Get-Item -LiteralPath $Path -Force
-        if (-not $item.PSIsContainer) {
-            throw "Expected a directory: $Path"
-        }
-        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw "Refusing to write through a reparse point: $Path"
+        if (-not $item.PSIsContainer -or (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+            throw "Expected a regular directory: $Path"
         }
         return
     }
 
     [System.IO.Directory]::CreateDirectory($Path) | Out-Null
-    $item = Get-Item -LiteralPath $Path -Force
-    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "Refusing to write through a reparse point: $Path"
-    }
 }
 
 function Ensure-TagLibArchive {
@@ -136,86 +140,6 @@ function Ensure-TagLibArchive {
     }
 }
 
-function Get-ApplicationSourceFiles {
-    $allowedPrefixes = @('src/', 'tests/', 'tools/', 'installer/', 'licenses/', '.github/')
-    $allowedRootFiles = @('Ncm.sln', 'Directory.Build.props', 'README', 'README.md', 'LICENSE', 'NOTICE', '.gitignore')
-    $excludedDirectoryPattern = '(?i)(^|/)(?:\.git|\.private|private|cache|bin|obj|samples|credentials?)(?:/|$)'
-    $sensitiveLeafPattern = '(?i)^(?:\.env(?:\..*)?|credentials?(?:\..*)?|secrets?(?:\..*)?|id_(?:rsa|ed25519)|.+\.(?:pfx|p12|pem|key|cer))$'
-    $gitOutput = @(& git -c ("safe.directory={0}" -f $repoRoot) -C $repoRoot ls-files --cached --others --exclude-standard -z)
-    if ($LASTEXITCODE -ne 0) {
-        throw 'git ls-files failed while collecting the public source working tree.'
-    }
-
-    $joinedOutput = [string]::Join('', [string[]]$gitOutput)
-    $paths = $joinedOutput.Split([char[]]@([char]0), [System.StringSplitOptions]::RemoveEmptyEntries)
-    $files = [System.Collections.Generic.List[object]]::new()
-    $excludedCount = 0
-    $rootPrefix = $repoRoot.TrimEnd([char[]]@('\', '/')) + [System.IO.Path]::DirectorySeparatorChar
-
-    foreach ($gitPath in $paths) {
-        $relativePath = $gitPath.Replace('\', '/')
-        if ([System.IO.Path]::IsPathRooted($relativePath) -or $relativePath -match '(^|/)\.\.?(/|$)') {
-            throw "git returned a non-relative source path: $relativePath"
-        }
-
-        $isAllowed = $allowedRootFiles -contains $relativePath
-        if (-not $isAllowed) {
-            foreach ($prefix in $allowedPrefixes) {
-                if ($relativePath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-                    $isAllowed = $true
-                    break
-                }
-            }
-        }
-        if (-not $isAllowed) {
-            continue
-        }
-
-        $leafName = [System.IO.Path]::GetFileName($relativePath)
-        if ($relativePath -match $excludedDirectoryPattern -or
-            ($leafName -match $sensitiveLeafPattern -and $leafName -ne '.env.example')) {
-            $excludedCount++
-            continue
-        }
-
-        $fullPath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $relativePath))
-        if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Source path escaped the repository root: $relativePath"
-        }
-        if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
-            continue
-        }
-
-        $relativeSegments = $relativePath.Split([char[]]@('/'))
-        $probePath = $repoRoot
-        foreach ($segment in $relativeSegments) {
-            $probePath = Join-Path $probePath $segment
-            $probeItem = Get-Item -LiteralPath $probePath -Force
-            if (($probeItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "Refusing to archive a path through a reparse point: $relativePath"
-            }
-        }
-        if ((Get-Item -LiteralPath $fullPath -Force).PSIsContainer) {
-            continue
-        }
-
-        $files.Add([pscustomobject]@{
-            FullPath = $fullPath
-            RelativePath = $relativePath
-            ArchivePath = "application/$relativePath"
-        })
-    }
-
-    if ($excludedCount -gt 0) {
-        Write-Verbose ("Filtered {0} sensitive or generated source paths." -f $excludedCount)
-    }
-    if ($files.Count -eq 0) {
-        throw 'No public application source files were found for the source archive.'
-    }
-
-    return @($files | Sort-Object RelativePath -CaseSensitive)
-}
-
 function Assert-NoLocalPathsInMetadata {
     param([Parameter(Mandatory = $true)][string]$Text)
 
@@ -240,7 +164,7 @@ function Add-FileToArchive {
     )
 
     $entry = $Archive.CreateEntry($EntryPath, $CompressionLevel)
-    $entry.LastWriteTime = [DateTimeOffset]::new(1980, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+    $entry.LastWriteTime = $fixedZipTime
     $sourceStream = [System.IO.File]::OpenRead($SourcePath)
     $entryStream = $entry.Open()
     try {
@@ -260,7 +184,7 @@ function Add-TextToArchive {
     )
 
     $entry = $Archive.CreateEntry($EntryPath, [System.IO.Compression.CompressionLevel]::Optimal)
-    $entry.LastWriteTime = [DateTimeOffset]::new(1980, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+    $entry.LastWriteTime = $fixedZipTime
     $entryStream = $entry.Open()
     $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($Text)
     try {
@@ -286,6 +210,149 @@ function Get-ZipEntrySha256 {
     }
 }
 
+function New-TagLibSourceArchive {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath
+    )
+
+    $sourceStream = $null
+    $gzipStream = $null
+    $tarReader = $null
+    $destinationStream = $null
+    $zipArchive = $null
+    $rootName = $null
+    $excludedFound = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $includedNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $completed = $false
+
+    try {
+        $sourceStream = [System.IO.File]::OpenRead($SourcePath)
+        $gzipStream = [System.IO.Compression.GZipStream]::new($sourceStream, [System.IO.Compression.CompressionMode]::Decompress, $true)
+        $tarReader = [System.Formats.Tar.TarReader]::new($gzipStream, $true)
+        $destinationStream = [System.IO.File]::Open($DestinationPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        $zipArchive = [System.IO.Compression.ZipArchive]::new($destinationStream, [System.IO.Compression.ZipArchiveMode]::Create, $true)
+
+        while ($null -ne ($entry = $tarReader.GetNextEntry($false))) {
+            $entryType = [string]$entry.EntryType
+            if (@('GlobalExtendedAttributes', 'ExtendedAttributes', 'LongLink', 'LongPath') -contains $entryType) {
+                continue
+            }
+
+            $entryName = [string]$entry.Name
+            if ($entryName.StartsWith('/', [System.StringComparison]::Ordinal) -or
+                $entryName.StartsWith('\', [System.StringComparison]::Ordinal) -or
+                $entryName -match '^[A-Za-z]:') {
+                throw "Unsafe path in the verified TagLib source archive: $entryName"
+            }
+            $entryPath = $entryName.Replace('\', '/').TrimEnd('/')
+            if ([string]::IsNullOrWhiteSpace($entryPath) -or $entryPath -match '(^|/)\.\.?(/|$)') {
+                throw "Unsafe path in the verified TagLib source archive: $($entry.Name)"
+            }
+
+            $segments = $entryPath.Split([char[]]@('/'), [System.StringSplitOptions]::RemoveEmptyEntries)
+            if ($null -eq $rootName) {
+                if ($segments.Count -ne 1 -or $entryType -ne 'Directory') {
+                    throw 'The TagLib source archive does not start with a single top-level directory.'
+                }
+                $rootName = $segments[0]
+            }
+            elseif ($segments[0] -ne $rootName) {
+                throw "Unexpected top-level path in the TagLib source archive: $entryPath"
+            }
+
+            $relativePath = if ($entryPath -eq $rootName) { '' } else { $entryPath.Substring($rootName.Length + 1) }
+            $excludedPrefix = $null
+            foreach ($prefix in $tagLibExcludedPaths) {
+                $directoryPath = $prefix.TrimEnd('/')
+                if ($relativePath -eq $directoryPath -or $relativePath.StartsWith($prefix, [System.StringComparison]::Ordinal)) {
+                    $excludedPrefix = $prefix
+                    break
+                }
+            }
+            if ($null -ne $excludedPrefix) {
+                $excludedFound.Add($excludedPrefix) | Out-Null
+                if ($null -ne $entry.DataStream) {
+                    $entry.DataStream.CopyTo([System.IO.Stream]::Null)
+                }
+                continue
+            }
+
+            $zipEntryPath = $entryPath
+            if ($entryType -eq 'Directory') {
+                $zipEntryPath += '/'
+            }
+            elseif (@('RegularFile', 'V7RegularFile', 'ContiguousFile') -notcontains $entryType) {
+                throw "Unsupported entry type in the TagLib source archive: $entryType ($entryPath)"
+            }
+            if (-not $includedNames.Add($zipEntryPath)) {
+                throw "Duplicate path in the TagLib source archive: $zipEntryPath"
+            }
+
+            $zipEntry = $zipArchive.CreateEntry($zipEntryPath, [System.IO.Compression.CompressionLevel]::Optimal)
+            $zipEntry.LastWriteTime = $fixedZipTime
+            if ($entryType -ne 'Directory' -and $null -ne $entry.DataStream) {
+                $entryStream = $zipEntry.Open()
+                try {
+                    $entry.DataStream.CopyTo($entryStream)
+                }
+                finally {
+                    $entryStream.Dispose()
+                }
+            }
+        }
+        $zipArchive.Dispose()
+        $zipArchive = $null
+        $destinationStream.Dispose()
+        $destinationStream = $null
+        $tarReader.Dispose()
+        $tarReader = $null
+        $gzipStream.Dispose()
+        $gzipStream = $null
+        $sourceStream.Dispose()
+        $sourceStream = $null
+
+        if ([string]::IsNullOrWhiteSpace($rootName)) {
+            throw 'The TagLib source archive was empty.'
+        }
+
+        foreach ($requiredPath in @('COPYING', 'AUTHORS', 'Directory.Build.props', 'Directory.Build.targets', 'taglib-sharp.snk', 'src/TaglibSharp/TaglibSharp.csproj')) {
+            if (-not $includedNames.Contains("$rootName/$requiredPath")) {
+                throw "The reduced TagLib source archive is missing required build or license material: $requiredPath"
+            }
+        }
+
+        foreach ($excludedPrefix in $tagLibExcludedPaths) {
+            $hasExcludedEntry = @($includedNames | Where-Object { $_.StartsWith("$rootName/$excludedPrefix", [System.StringComparison]::Ordinal) }).Count -gt 0
+            if ($hasExcludedEntry) {
+                throw "The reduced TagLib source archive still contains excluded content: $excludedPrefix"
+            }
+        }
+
+        $archiveHash = Get-Sha256 -Path $DestinationPath
+        $completed = $true
+        return [pscustomobject]@{
+            RootName = $rootName
+            ExcludedPaths = @($excludedFound | Sort-Object -CaseSensitive)
+            Sha256 = $archiveHash
+        }
+    }
+    finally {
+        if ($null -ne $zipArchive) { $zipArchive.Dispose() }
+        if ($null -ne $destinationStream) { $destinationStream.Dispose() }
+        if ($null -ne $tarReader) { $tarReader.Dispose() }
+        if ($null -ne $gzipStream) { $gzipStream.Dispose() }
+        if ($null -ne $sourceStream) { $sourceStream.Dispose() }
+        if (-not $completed -and (Test-Path -LiteralPath $DestinationPath)) {
+            $destinationItem = Get-Item -LiteralPath $DestinationPath -Force
+            if ($destinationItem.PSIsContainer -or (($destinationItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+                throw "Refusing to remove an unexpected TagLib temporary archive path: $DestinationPath"
+            }
+            Remove-Item -LiteralPath $DestinationPath -Force
+        }
+    }
+}
+
 Assert-SafeDirectory -Path $artifactRoot
 Assert-SafeDirectory -Path $releaseSourceRoot
 
@@ -305,157 +372,119 @@ foreach ($spec in $nativeSources) {
 }
 
 $tagLibArchivePath = Ensure-TagLibArchive -Spec $tagLibSource
-$tagLibArchive = [pscustomobject]@{
-    Spec = $tagLibSource
-    FullPath = $tagLibArchivePath
-    ArchivePath = "third-party/$($tagLibSource.Archive)"
-}
+$tagLibTemporaryPath = Join-Path $releaseSourceRoot ('.' + $tagLibSource.SlimArchive + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
+$tagLibArchiveInfo = New-TagLibSourceArchive -SourcePath $tagLibArchivePath -DestinationPath $tagLibTemporaryPath
+$tagLibArchivePathInZip = "third-party/$($tagLibSource.SlimArchive)"
 
 Assert-RegularFile -Path $nativeMetadataPath
 $nativeMetadataText = [System.IO.File]::ReadAllText($nativeMetadataPath)
 Assert-NoLocalPathsInMetadata -Text $nativeMetadataText
 $null = $nativeMetadataText | ConvertFrom-Json -ErrorAction Stop
 
-$applicationFiles = @(Get-ApplicationSourceFiles)
-$applicationManifest = @(
-    foreach ($file in $applicationFiles) {
-        $sourceItem = Get-Item -LiteralPath $file.FullPath
-        $sourceHash = Get-Sha256 -Path $file.FullPath
-        $file | Add-Member -NotePropertyName Size -NotePropertyValue $sourceItem.Length -Force
-        $file | Add-Member -NotePropertyName Sha256 -NotePropertyValue $sourceHash -Force
-        [ordered]@{
-            path = $file.RelativePath
-            size = $file.Size
-            sha256 = $file.Sha256
-        }
-    }
-)
-
 $gitRevisionLines = @(& git -c ("safe.directory={0}" -f $repoRoot) -C $repoRoot rev-parse HEAD)
 if ($LASTEXITCODE -ne 0 -or $gitRevisionLines.Count -eq 0) {
-    throw 'git rev-parse failed while recording the source revision.'
+    throw 'git rev-parse failed while recording the project source revision.'
 }
 $gitRevision = ([string]$gitRevisionLines[0]).Trim()
 if ($gitRevision -notmatch '^[0-9a-fA-F]{40,64}$') {
-    throw 'git rev-parse returned an invalid source revision.'
+    throw 'git rev-parse returned an invalid project source revision.'
 }
 
-$metadata = [ordered]@{
-    schemaVersion = 1
+$manifest = [ordered]@{
+    schemaVersion = 2
     project = 'NcmConverter'
     target = 'win-x64'
-    generatedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
     sourceRevision = $gitRevision.ToLowerInvariant()
-    sourceSnapshot = 'public working tree, including staged and unstaged changes'
-    applicationFileCount = $applicationManifest.Count
-    applicationFiles = $applicationManifest
     thirdPartySources = @(
         foreach ($item in $nativeArchiveSpecs) {
             [ordered]@{
                 name = $item.Spec.Name
+                version = $item.Spec.Version
                 archive = $item.ArchivePath
-                url = $item.Spec.Url
+                sourceUrl = $item.Spec.Url
+                upstreamSha256 = $item.Spec.Sha256
+                archiveSha256 = $item.Spec.Sha256
                 sha256 = $item.Spec.Sha256
                 license = $item.Spec.License
             }
         }
         [ordered]@{
             name = $tagLibSource.Name
-            archive = $tagLibArchive.ArchivePath
-            url = $tagLibSource.Url
+            version = $tagLibSource.Version
+            archive = $tagLibArchivePathInZip
+            upstreamArchive = $tagLibSource.Archive
+            sourceUrl = $tagLibSource.Url
             commit = $tagLibSource.Commit
-            tag = $tagLibSource.Tag
-            sha256 = $tagLibSource.Sha256
+            upstreamSha256 = $tagLibSource.Sha256
+            archiveSha256 = $tagLibArchiveInfo.Sha256
+            sha256 = $tagLibArchiveInfo.Sha256
+            excludedPaths = $tagLibArchiveInfo.ExcludedPaths
             license = $tagLibSource.License
         }
     )
     nativeBuild = [ordered]@{
         metadata = 'build/native-build-metadata.json'
         metadataSha256 = Get-Sha256 -Path $nativeMetadataPath
-        outputDirectory = 'artifacts/native/win-x64'
-        sharedLibraries = @('avcodec-63.dll', 'avformat-63.dll', 'avutil-61.dll', 'swresample-7.dll', 'swscale-10.dll')
     }
 }
-$metadataJson = ($metadata | ConvertTo-Json -Depth 8) + [Environment]::NewLine
+$manifestJson = ($manifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine
 
-if (Test-Path -LiteralPath $archivePath) {
-    $archiveItem = Get-Item -LiteralPath $archivePath -Force
-    if ($archiveItem.PSIsContainer -or (($archiveItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
-        throw "Refusing to replace a non-regular source archive: $archivePath"
-    }
-}
-if (Test-Path -LiteralPath $checksumPath) {
-    $checksumItem = Get-Item -LiteralPath $checksumPath -Force
-    if ($checksumItem.PSIsContainer -or (($checksumItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
-        throw "Refusing to replace a non-regular checksum file: $checksumPath"
+foreach ($path in @($archivePath, $checksumPath)) {
+    if (Test-Path -LiteralPath $path) {
+        $item = Get-Item -LiteralPath $path -Force
+        if ($item.PSIsContainer -or (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+            throw "Refusing to replace a non-regular release archive path: $path"
+        }
     }
 }
 
 $temporaryArchivePath = "$archivePath.$([guid]::NewGuid().ToString('N')).tmp"
 $temporaryChecksumPath = "$checksumPath.$([guid]::NewGuid().ToString('N')).tmp"
 $ownedTemporaryPaths = [System.Collections.Generic.List[string]]::new()
+$ownedTemporaryPaths.Add($tagLibTemporaryPath)
 
 try {
     $fileStream = [System.IO.File]::Open($temporaryArchivePath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
     $ownedTemporaryPaths.Add($temporaryArchivePath)
     $zipArchive = [System.IO.Compression.ZipArchive]::new($fileStream, [System.IO.Compression.ZipArchiveMode]::Create, $true)
     try {
-        foreach ($file in $applicationFiles) {
-            Add-FileToArchive -Archive $zipArchive -SourcePath $file.FullPath -EntryPath $file.ArchivePath -CompressionLevel ([System.IO.Compression.CompressionLevel]::Optimal)
-        }
         foreach ($item in $nativeArchiveSpecs) {
             Add-FileToArchive -Archive $zipArchive -SourcePath $item.FullPath -EntryPath $item.ArchivePath -CompressionLevel ([System.IO.Compression.CompressionLevel]::NoCompression)
         }
-        Add-FileToArchive -Archive $zipArchive -SourcePath $tagLibArchive.FullPath -EntryPath $tagLibArchive.ArchivePath -CompressionLevel ([System.IO.Compression.CompressionLevel]::NoCompression)
+        Add-FileToArchive -Archive $zipArchive -SourcePath $tagLibTemporaryPath -EntryPath $tagLibArchivePathInZip -CompressionLevel ([System.IO.Compression.CompressionLevel]::NoCompression)
         Add-TextToArchive -Archive $zipArchive -EntryPath 'build/native-build-metadata.json' -Text ($nativeMetadataText.TrimEnd() + [Environment]::NewLine)
-        Add-TextToArchive -Archive $zipArchive -EntryPath 'build/build-metadata.json' -Text $metadataJson
+        Add-TextToArchive -Archive $zipArchive -EntryPath 'build/build-metadata.json' -Text $manifestJson
     }
     finally {
         $zipArchive.Dispose()
         $fileStream.Dispose()
     }
 
-    $expectedThirdPartyEntries = @($nativeArchiveSpecs) + @($tagLibArchive)
     $verifyStream = [System.IO.File]::OpenRead($temporaryArchivePath)
     $verifyArchive = [System.IO.Compression.ZipArchive]::new($verifyStream, [System.IO.Compression.ZipArchiveMode]::Read, $true)
     try {
-        $entryNames = @($verifyArchive.Entries | ForEach-Object FullName)
-        if (($entryNames | Select-Object -Unique).Count -ne $entryNames.Count) {
-            throw 'The source archive contains duplicate ZIP entry names.'
-        }
-        $expectedThirdPartyEntries = @($nativeArchiveSpecs) + @($tagLibArchive)
         $expectedEntryNames = @(
-            @($applicationFiles | ForEach-Object ArchivePath) +
-            @($expectedThirdPartyEntries | ForEach-Object ArchivePath) +
-            @('build/native-build-metadata.json', 'build/build-metadata.json')
+            @($nativeArchiveSpecs | ForEach-Object ArchivePath) +
+            @($tagLibArchivePathInZip, 'build/native-build-metadata.json', 'build/build-metadata.json')
         ) | Sort-Object -CaseSensitive
+        $entryNames = @($verifyArchive.Entries | ForEach-Object FullName)
         $actualEntryNames = @($entryNames | Sort-Object -CaseSensitive)
-        if ($actualEntryNames.Count -ne $expectedEntryNames.Count -or
+        if (($entryNames | Select-Object -Unique).Count -ne $entryNames.Count -or
+            $actualEntryNames.Count -ne $expectedEntryNames.Count -or
             (Compare-Object -ReferenceObject $expectedEntryNames -DifferenceObject $actualEntryNames)) {
-            throw 'The source archive contains missing or unexpected ZIP entries.'
+            throw 'The third-party source archive contains duplicate, missing, or unexpected ZIP entries.'
         }
-        foreach ($file in $applicationFiles) {
-            $entry = $verifyArchive.GetEntry($file.ArchivePath)
-            if ($null -eq $entry) {
-                throw "The source archive is missing an application file: $($file.RelativePath)"
-            }
-            $entryHash = Get-ZipEntrySha256 -Entry $entry
-            if ($entryHash -ne $file.Sha256) {
-                throw "SHA-256 mismatch inside the source archive for $($file.RelativePath)"
-            }
-        }
-        foreach ($item in $expectedThirdPartyEntries) {
+
+        foreach ($item in $nativeArchiveSpecs) {
             $entry = $verifyArchive.GetEntry($item.ArchivePath)
-            if ($null -eq $entry) {
-                throw "The source archive is missing a third-party source archive: $($item.Spec.Archive)"
-            }
-            $entryHash = Get-ZipEntrySha256 -Entry $entry
-            if ($entryHash -ne $item.Spec.Sha256) {
-                throw "SHA-256 mismatch inside the source archive for $($item.Spec.Archive): expected $($item.Spec.Sha256), received $entryHash"
+            if ((Get-ZipEntrySha256 -Entry $entry) -ne $item.Spec.Sha256) {
+                throw "SHA-256 mismatch inside the source archive for $($item.Spec.Archive)."
             }
         }
-        $nativeMetadataEntry = $verifyArchive.GetEntry('build/native-build-metadata.json')
-        if ((Get-ZipEntrySha256 -Entry $nativeMetadataEntry) -ne (Get-Sha256 -Path $nativeMetadataPath)) {
+        if ((Get-ZipEntrySha256 -Entry $verifyArchive.GetEntry($tagLibArchivePathInZip)) -ne $tagLibArchiveInfo.Sha256) {
+            throw 'SHA-256 mismatch inside the source archive for the reduced TagLib source archive.'
+        }
+        if ((Get-ZipEntrySha256 -Entry $verifyArchive.GetEntry('build/native-build-metadata.json')) -ne (Get-Sha256 -Path $nativeMetadataPath)) {
             throw 'Native build metadata changed while creating the source archive.'
         }
     }
@@ -465,7 +494,7 @@ try {
     }
 
     $archiveHash = Get-Sha256 -Path $temporaryArchivePath
-    $checksumText = "$archiveHash *ncm-sources.zip$([Environment]::NewLine)"
+    $checksumText = "$archiveHash *third-party-sources.zip$([Environment]::NewLine)"
     $checksumStream = [System.IO.File]::Open($temporaryChecksumPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
     $ownedTemporaryPaths.Add($temporaryChecksumPath)
     try {
@@ -487,6 +516,8 @@ try {
     Write-Output "Source archive: $archivePath"
     Write-Output "SHA256: $finalHash"
     Write-Output "Checksum: $checksumPath"
+    Write-Output ("Reduced TagLib source archive SHA256: {0}" -f $tagLibArchiveInfo.Sha256)
+    Write-Output ("TagLib excluded paths: {0}" -f ($tagLibArchiveInfo.ExcludedPaths -join ', '))
 }
 finally {
     foreach ($temporaryPath in $ownedTemporaryPaths) {

@@ -479,9 +479,9 @@ else {
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-    $Version = Get-MsBuildProperty -DotnetPath $dotnetPath -ProjectPath $projectPath -PropertyName 'AssemblyVersion'
+    $Version = Get-MsBuildProperty -DotnetPath $dotnetPath -ProjectPath $projectPath -PropertyName 'Version'
     if ([string]::IsNullOrWhiteSpace($Version)) {
-        $Version = Get-MsBuildProperty -DotnetPath $dotnetPath -ProjectPath $projectPath -PropertyName 'Version'
+        $Version = Get-MsBuildProperty -DotnetPath $dotnetPath -ProjectPath $projectPath -PropertyName 'AssemblyVersion'
     }
 }
 
@@ -497,6 +497,12 @@ foreach ($component in $fileVersion.Split('.')) {
         throw "Version components must be between 0 and 65535: $Version"
     }
 }
+
+$fileVersionParts = @($fileVersion.Split('.'))
+while ($fileVersionParts.Count -lt 4) {
+    $fileVersionParts += '0'
+}
+$fileVersion = $fileVersionParts -join '.'
 
 $publishAotEnabled = -not $NoPublishAot.IsPresent
 if ($publishAotEnabled -and $NoPublishTrimmed.IsPresent) {
@@ -662,6 +668,9 @@ try {
             '--self-contained', 'true',
             '--output', $resolvedSourceDirectory,
             '-p:Platform=x64',
+            "-p:Version=$Version",
+            "-p:FileVersion=$fileVersion",
+            '-p:IncludeSourceRevisionInInformationalVersion=false',
             '-p:SelfContained=true',
             '-p:UseAppHost=true'
         )
@@ -687,6 +696,12 @@ try {
     Assert-SelfContainedPublish -PublishDirectory $resolvedSourceDirectory -IsAot:$publishAotEnabled
     Install-NativeMediaIntoPublishDirectory -NativeMediaDirectory $resolvedNativeMediaDirectory -PublishDirectory $resolvedSourceDirectory
 
+    $appVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $resolvedSourceDirectory 'Ncm.App.exe'))
+    if ($appVersionInfo.FileVersion -ne $fileVersion -or
+        $appVersionInfo.ProductVersion.Split('+')[0] -ne $Version.Split('+')[0]) {
+        throw "Application version does not match installer version $Version (file version $fileVersion)."
+    }
+
     $innoDefines = @(
         "/DAppSourceDir=$resolvedSourceDirectory",
         "/DAppVersion=$Version",
@@ -708,6 +723,12 @@ try {
     }
     if ((Get-Item -LiteralPath $temporarySetupPath).Length -le 0) {
         throw 'ISCC.exe produced an empty setup.exe.'
+    }
+
+    $setupVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($temporarySetupPath)
+    $setupNumericVersion = '{0}.{1}.{2}.{3}' -f $setupVersionInfo.FileMajorPart, $setupVersionInfo.FileMinorPart, $setupVersionInfo.FileBuildPart, $setupVersionInfo.FilePrivatePart
+    if ($setupNumericVersion -ne $fileVersion -or $setupVersionInfo.ProductVersion.Trim() -ne $Version) {
+        throw "Installer executable version does not match requested version $Version (file version $fileVersion)."
     }
 
     $setupHash = (Get-FileHash -LiteralPath $temporarySetupPath -Algorithm SHA256).Hash.ToLowerInvariant()
