@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -7,6 +8,7 @@ using Ncm.Core;
 using Ncm.Media;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
+using WinRT.Interop;
 
 namespace Ncm.App;
 
@@ -35,7 +37,6 @@ public sealed partial class MainWindow : Window
     private bool _draggingRows;
     private string[]? _orderBeforeDrag;
     private bool _startPromptOpen;
-    private bool _initialWindowPlaced;
     private bool _windowClosed;
     private bool _closingRequested;
     private bool _closeReady;
@@ -57,6 +58,7 @@ public sealed partial class MainWindow : Window
         RootGrid.SizeChanged += RootGrid_SizeChanged;
         AppWindow.Changed += AppWindow_Changed;
         AppWindow.Closing += AppWindow_Closing;
+        SetInitialWindowBounds();
         UpdateListState();
         UpdateStartState();
         Closed += (_, _) =>
@@ -149,12 +151,6 @@ public sealed partial class MainWindow : Window
         }
 
         UpdateMinimumWindowSize();
-        if (!_initialWindowPlaced)
-        {
-            _initialWindowPlaced = true;
-            SetInitialWindowBounds();
-        }
-
         UpdateMainLayout();
     }
 
@@ -202,21 +198,17 @@ public sealed partial class MainWindow : Window
 
     private void SetInitialWindowBounds()
     {
-        if (_windowXamlRoot is null || AppWindow.Presenter is not OverlappedPresenter presenter)
-        {
-            return;
-        }
-
         var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-        var scale = _windowXamlRoot.RasterizationScale;
-        var width = Math.Max(presenter.PreferredMinimumWidth ?? 0,
-            Math.Min((int)Math.Ceiling(1120 * scale), Math.Max(1, workArea.Width - 48)));
-        var height = Math.Max(presenter.PreferredMinimumHeight ?? 0,
-            Math.Min((int)Math.Ceiling(780 * scale), Math.Max(1, workArea.Height - 48)));
+        var scale = GetDpiForWindow(WindowNative.GetWindowHandle(this)) / 96d;
+        var width = Math.Min((int)Math.Ceiling(1120 * scale), Math.Max(1, workArea.Width - 48));
+        var height = Math.Min((int)Math.Ceiling(780 * scale), Math.Max(1, workArea.Height - 48));
         var x = workArea.X + (workArea.Width - width) / 2;
         var y = workArea.Y + (workArea.Height - height) / 2;
         AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
     }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr window);
 
     private async void AddFiles_Click(object sender, RoutedEventArgs e)
     {
