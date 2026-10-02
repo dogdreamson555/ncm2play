@@ -33,7 +33,7 @@ dotnet test tests\Ncm.Media.Tests\Ncm.Media.Tests.csproj -c Release
 dotnet test tests\Ncm.App.Tests\Ncm.App.Tests.csproj -c Release -p:Platform=x64
 ```
 
-自动化测试使用合成 NCM 数据和[自制音频夹具](../tests/Ncm.Media.Tests/Fixtures/README.md)。用于本机手动验证的真实文件放在被 Git 忽略的 `samples/` 中。
+自动化测试使用合成 NCM 数据和[自制音频夹具](../tests/Ncm.Media.Tests/Fixtures/README.md)。
 
 ## 制作安装包
 
@@ -53,7 +53,7 @@ pacman -S --needed base-devel mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pk
 
 构建需要联网恢复 NuGet 包和下载固定版本、校验 SHA-256 的源码。ISCC 未加入 PATH 时，可向 `Build-Installer.ps1` 传入 `-IsccPath`；NASM、Meson、Ninja 在其他目录时，可向 `Build-NativeMedia.ps1` 传入 `-ExtraToolPath`。
 
-安装包输出为 `artifacts/installer/setup.exe`。第三方源码输出为 `artifacts/release-sources/third-party-sources.zip`，包含 FFmpeg、LAME、dav1d 原始源码，精简的 TagLibSharp 源码，哈希和构建记录；不进入安装包。本项目源码和构建脚本由 Release 的 Source code 下载提供。脚本生成的 `.sha256` 文件用于本地核对，Release 显示 GitHub 自动计算的 SHA-256。修改 LGPL 库的步骤见[重建说明](../licenses/REBUILD.md)。
+安装包输出为 `artifacts/installer/setup.exe`。第三方源码输出为 `artifacts/release-sources/third-party-sources.zip`，包含 FFmpeg、LAME、dav1d 原始源码，精简的 TagLibSharp 源码，哈希和构建记录；
 
 发布使用 NativeAOT、按需引用 Windows App SDK，并只部署 MP3/FLAC 音频与 AVIF/HEIC 图片处理所需的五个 FFmpeg 共享库；开发和普通测试使用完整的 NuGet 媒体后端。安装器采用 LZMA2 整体压缩，排除调试符号。
 
@@ -64,5 +64,3 @@ pacman -S --needed base-devel mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pk
 3. 工作流自动运行三个模块的测试、构建媒体库和安装包，发布 `v<Version>` 并标记为 Latest。只上传 `setup.exe` 和 `third-party-sources.zip`，项目源码自动附带。
 
 工作流使用内置 `GITHUB_TOKEN`。应用与安装器使用同一版本；已有同名 Release 时停止，已有同名标签必须对应本次提交。项目初始版本为 `1.0.0`。
-
-发布前按改动实测；首次启用以及部署配置或媒体依赖变更时，在无预装 .NET / Windows App SDK 的断网 Windows 11 x64 环境验证部署。该干净环境验证仍待完成。工作流会直接正式发布，发布后再下载成品检查安装、启动和代表性转换；发现问题时修复并发布新版本。
