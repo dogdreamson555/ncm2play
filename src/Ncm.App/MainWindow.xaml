@@ -108,7 +108,7 @@
                                       SelectionChanged="AdvancedSetting_Changed" AutomationProperties.AutomationId="NumberingModeRadioButtons">
                             <RadioButton Content="不添加标号" />
                             <RadioButton Content="根据专辑曲序来标号" />
-                            <RadioButton Content="从上到下进行标号" />
+                            <RadioButton Content="从上到下进行标号（项目可拖动）" />
                         </RadioButtons>
                     </StackPanel>
 
