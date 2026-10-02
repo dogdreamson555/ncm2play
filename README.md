@@ -4,9 +4,8 @@
 
 ## 下载与安装
 
-[下载安装包](https://github.com/dogdreamson555/ncm2play/releases/latest/download/setup.exe) · [查看最新版本](https://github.com/dogdreamson555/ncm2play/releases/latest)
+[下载与查看最新版本](https://github.com/dogdreamson555/ncm2play/releases/latest)
 
-支持 **Windows 11 x64**。下载 `setup.exe` 后安装即可，无需管理员权限，也无需另外安装运行库或图片扩展。安装和转换均可离线进行；卸载不会删除已导出的音乐。
 
 ## 开始使用
 

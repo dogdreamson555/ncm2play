@@ -30,7 +30,7 @@ if [[ "${MSYSTEM:-}" != "UCRT64" ]]; then
     die "run from an MSYS2 UCRT64 login shell"
 fi
 
-required_tools=(gcc make pkgconf ar ranlib nm strip objdump strings nasm meson ninja)
+required_tools=(gcc make pkgconf ar ranlib nm strip objdump strings windres nasm meson ninja)
 missing_tools=()
 for tool in "${required_tools[@]}"; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -184,7 +184,7 @@ ffmpeg_configure_args=(
     --enable-libmp3lame
     --extra-cflags=-I../../stage/usr/include
     --extra-ldflags=-L../../stage/usr/lib
-    "--extra-libs=-Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic"
+    "--extra-libs=-Wl,-Bstatic,--start-group -lgcc -lgcc_eh -lwinpthread -Wl,--end-group,-Bdynamic"
 )
 printf '%s\n' "${ffmpeg_configure_args[@]}" > "$build_root/ffmpeg-configure-args.txt"
 
@@ -197,8 +197,8 @@ printf '%s\n' "${ffmpeg_configure_args[@]}" > "$build_root/ffmpeg-configure-args
     export PKG_CONFIG_LIBDIR="$pkg_config_libdir"
     export PKG_CONFIG_SYSROOT_DIR="$pkg_config_sysroot"
     ./configure "${ffmpeg_configure_args[@]}"
-    make -j "$jobs"
-    make DESTDIR="$stage_root" install-libs
+    make -j "$jobs" HAVE_GNU_WINDRES=yes
+    make DESTDIR="$stage_root" HAVE_GNU_WINDRES=yes install-libs
 )
 
 expected_dlls=(

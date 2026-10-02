@@ -116,7 +116,7 @@ jobs:
           APP_VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          $assets = @('artifacts/installer/setup.exe', 'artifacts/release-sources/third-party-sources.zip')
+          $assets = @('artifacts/installer/NcmConverter-win-x64-setup.exe', 'artifacts/release-sources/third-party-sources.zip')
           foreach ($asset in $assets) {
             if (-not (Test-Path -LiteralPath $asset -PathType Leaf) -or (Get-Item -LiteralPath $asset).Length -le 0) {
               throw "Release asset is missing or empty: $asset"

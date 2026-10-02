@@ -261,8 +261,17 @@ $expectedDlls = @(
     'swscale-10.dll'
 )
 foreach ($dll in $expectedDlls) {
-    if (-not (Test-Path -LiteralPath (Join-Path $outputRoot $dll) -PathType Leaf)) {
+    $dllPath = Join-Path $outputRoot $dll
+    if (-not (Test-Path -LiteralPath $dllPath -PathType Leaf)) {
         throw "Expected FFmpeg ABI library is missing: $dll"
+    }
+    $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($dllPath)
+    $expectedMajor = [int]([regex]::Match($dll, '-(\d+)\.dll$').Groups[1].Value)
+    if ($versionInfo.ProductName -ne 'FFmpeg' -or
+        $versionInfo.CompanyName -ne 'FFmpeg Project' -or
+        $versionInfo.ProductVersion -ne '9.0.2' -or
+        $versionInfo.FileMajorPart -ne $expectedMajor) {
+        throw "FFmpeg version resource does not match the built library: $dll"
     }
 }
 $actualDlls = @(Get-ChildItem -LiteralPath $outputRoot -Filter '*.dll' -File | ForEach-Object Name | Sort-Object)
@@ -337,6 +346,7 @@ $metadata = [ordered]@{
     )
     linkFlags = @('-static-libgcc', '-Wl,--gc-sections')
     ffmpegConfigureArguments = $configureArguments
+    ffmpegMakeArguments = @('HAVE_GNU_WINDRES=yes')
     sharedLibraries = $expectedDlls
     runtimeDllAudit = [ordered]@{
         passed = ($externalRuntimeImports.Count -eq 0)

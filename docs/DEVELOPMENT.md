@@ -53,14 +53,16 @@ pacman -S --needed base-devel mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pk
 
 构建需要联网恢复 NuGet 包和下载固定版本、校验 SHA-256 的源码。ISCC 未加入 PATH 时，可向 `Build-Installer.ps1` 传入 `-IsccPath`；NASM、Meson、Ninja 在其他目录时，可向 `Build-NativeMedia.ps1` 传入 `-ExtraToolPath`。
 
-安装包输出为 `artifacts/installer/setup.exe`。第三方源码输出为 `artifacts/release-sources/third-party-sources.zip`，包含 FFmpeg、LAME、dav1d 原始源码，精简的 TagLibSharp 源码，哈希和构建记录；
+安装包输出为 `artifacts/installer/NcmConverter-win-x64-setup.exe`。第三方源码输出为 `artifacts/release-sources/third-party-sources.zip`，包含 FFmpeg、LAME、dav1d 原始源码，精简的 TagLibSharp 源码，哈希和构建记录；
 
 发布使用 NativeAOT、按需引用 Windows App SDK，并只部署 MP3/FLAC 音频与 AVIF/HEIC 图片处理所需的五个 FFmpeg 共享库；开发和普通测试使用完整的 NuGet 媒体后端。安装器采用 LZMA2 整体压缩，排除调试符号。
 
+安装包会清除完整后端附带的 `ffmpeg.exe` 和 `ffprobe.exe`。原生构建保留精简编译，同时通过 `HAVE_GNU_WINDRES=yes` 使用 FFmpeg 上游的 Windows 版本资源；构建脚本核对 DLL 的产品名、发布者、版本及 ABI 主版本。GCC 和 winpthreads 运行库按需静态链接，构建参数记录在 `build-metadata.json` 中。
+
 ## GitHub Actions 发布
 
-1. 更新 `src/Ncm.App/Ncm.App.csproj` 的 `Version`（例如 `1.0.1`），完成本次改动的检查并推送到 `main`。
+1. 更新 `src/Ncm.App/Ncm.App.csproj` 的 `Version`（例如 `1.0.4`），完成本次改动的检查并推送到 `main`。
 2. 在 [Actions](https://github.com/dogdreamson555/ncm2play/actions/workflows/release.yml) 打开 **Publish release**，选择 `main` 并点击 **Run workflow**。
-3. 工作流自动运行三个模块的测试、构建媒体库和安装包，发布 `v<Version>` 并标记为 Latest。只上传 `setup.exe` 和 `third-party-sources.zip`，项目源码自动附带。
+3. 工作流自动运行三个模块的测试、构建媒体库和安装包，发布 `v<Version>` 并标记为 Latest。只上传 `NcmConverter-win-x64-setup.exe` 和 `third-party-sources.zip`，项目源码自动附带。
 
 工作流使用内置 `GITHUB_TOKEN`。应用与安装器使用同一版本；已有同名 Release 时停止，已有同名标签必须对应本次提交。项目初始版本为 `1.0.0`。

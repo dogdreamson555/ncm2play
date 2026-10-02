@@ -395,6 +395,22 @@ function Install-NativeMediaIntoPublishDirectory {
     }
     Copy-Item -LiteralPath (Join-Path $NativeMediaDirectory 'build-metadata.json') -Destination $PublishDirectory -Force
 
+    $ffmpegCliFiles = @(
+        Get-ChildItem -LiteralPath $PublishDirectory -File -Recurse -Force |
+            Where-Object { $_.Name -match '^(?:ffmpeg|ffprobe)\.exe$' }
+    )
+    foreach ($ffmpegCliFile in $ffmpegCliFiles) {
+        Assert-ReplaceableRegularFile -Path $ffmpegCliFile.FullName
+        Remove-Item -LiteralPath $ffmpegCliFile.FullName -Force
+    }
+    $remainingFfmpegCliFiles = @(
+        Get-ChildItem -LiteralPath $PublishDirectory -File -Recurse -Force |
+            Where-Object { $_.Name -match '^(?:ffmpeg|ffprobe)\.exe$' }
+    )
+    if ($remainingFfmpegCliFiles.Count -gt 0) {
+        throw "Installer publish tree still contains FFmpeg command-line tools: $(($remainingFfmpegCliFiles | ForEach-Object { $_.FullName }) -join ', ')"
+    }
+
     $obsoleteFfmpegNames = @('avdevice-63.dll', 'avfilter-12.dll')
     $obsoleteFfmpegFiles = @(
         Get-ChildItem -LiteralPath $PublishDirectory -File -Recurse |
@@ -630,7 +646,7 @@ if (Test-Path -LiteralPath $resolvedOutputDirectory) {
     }
 }
 
-$setupFileName = 'setup.exe'
+$setupFileName = 'NcmConverter-win-x64-setup.exe'
 $checksumFileName = "$setupFileName.sha256"
 $finalSetupPath = Join-Path $resolvedOutputDirectory $setupFileName
 $finalChecksumPath = Join-Path $resolvedOutputDirectory $checksumFileName
@@ -701,6 +717,13 @@ try {
         $appVersionInfo.ProductVersion.Split('+')[0] -ne $Version.Split('+')[0]) {
         throw "Application version does not match installer version $Version (file version $fileVersion)."
     }
+    $expectedProductName = 'NCM 转换器'
+    $expectedCompanyName = 'dogdreamson555'
+    $expectedFileDescription = '离线将 NCM 音乐文件转换为 MP3 或 FLAC，并保留歌曲信息和封面。'
+    if ($appVersionInfo.ProductName -ne $expectedProductName -or
+        $appVersionInfo.CompanyName -ne $expectedCompanyName) {
+        throw "Application product metadata does not match the expected identity (product '$expectedProductName', publisher '$expectedCompanyName'). Rebuild the publish output from the current project metadata or provide a matching -SkipPublish directory."
+    }
 
     $innoDefines = @(
         "/DAppSourceDir=$resolvedSourceDirectory",
@@ -722,13 +745,18 @@ try {
         throw "ISCC.exe reported success but did not create the expected installer: $temporarySetupPath"
     }
     if ((Get-Item -LiteralPath $temporarySetupPath).Length -le 0) {
-        throw 'ISCC.exe produced an empty setup.exe.'
+        throw "ISCC.exe produced an empty $setupFileName."
     }
 
     $setupVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($temporarySetupPath)
     $setupNumericVersion = '{0}.{1}.{2}.{3}' -f $setupVersionInfo.FileMajorPart, $setupVersionInfo.FileMinorPart, $setupVersionInfo.FileBuildPart, $setupVersionInfo.FilePrivatePart
     if ($setupNumericVersion -ne $fileVersion -or $setupVersionInfo.ProductVersion.Trim() -ne $Version) {
         throw "Installer executable version does not match requested version $Version (file version $fileVersion)."
+    }
+    if (([string]$setupVersionInfo.ProductName).Trim() -ne $expectedProductName -or
+        ([string]$setupVersionInfo.CompanyName).Trim() -ne $expectedCompanyName -or
+        ([string]$setupVersionInfo.FileDescription).Trim() -ne $expectedFileDescription) {
+        throw "Installer product metadata does not match the expected identity (product '$expectedProductName', publisher '$expectedCompanyName')."
     }
 
     $setupHash = (Get-FileHash -LiteralPath $temporarySetupPath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -741,7 +769,7 @@ try {
 
     $finalHash = (Get-FileHash -LiteralPath $finalSetupPath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($finalHash -ne $setupHash) {
-        throw 'The setup.exe SHA-256 changed while finalizing the output.'
+        throw "The $setupFileName SHA-256 changed while finalizing the output."
     }
     Write-Output "Installer: $finalSetupPath"
     Write-Output "SHA256: $finalHash"
