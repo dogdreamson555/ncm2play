@@ -135,7 +135,7 @@ jobs:
           }
           $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           $notes = @(
-            'Windows 11 x64 offline installer.',
+            'Windows 10 version 1809 (build 17763) or later and Windows 11 x64 offline installer.',
             '',
             "[Third-party notices](https://github.com/$env:GITHUB_REPOSITORY/blob/$tag/licenses/README.md)",
             "[Corresponding third-party sources](https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/third-party-sources.zip)",

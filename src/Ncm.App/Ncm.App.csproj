@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <Version>1.0.3</Version>
+    <Version>1.0.4</Version>
     <Title>NCM 转换器</Title>
     <AssemblyTitle>NCM 转换器</AssemblyTitle>
     <Product>NCM 转换器</Product>
@@ -11,7 +11,7 @@
     <RepositoryUrl>https://github.com/dogdreamson555/ncm2play</RepositoryUrl>
     <PackageProjectUrl>https://github.com/dogdreamson555/ncm2play</PackageProjectUrl>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>Ncm.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <UseWinUI>true</UseWinUI>

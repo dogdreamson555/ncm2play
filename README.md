@@ -6,6 +6,8 @@
 
 [下载与查看最新版本](https://github.com/dogdreamson555/ncm2play/releases/latest)
 
+系统要求：Windows 10 1809（内部版本 17763）及以上的 64 位 Windows，包括 Windows 11。
+
 
 ## 开始使用
 
