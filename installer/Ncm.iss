@@ -68,3 +68,7 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 #if IncludeChineseSimplified == "yes"
 Name: "zhcn"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 #endif
+
+[LangOptions]
+DialogFontName=Microsoft YaHei UI
+WelcomeFontName=Microsoft YaHei UI
