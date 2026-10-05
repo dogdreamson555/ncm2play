@@ -6,7 +6,6 @@ namespace Ncm.App;
 
 public sealed partial class ConversionRow : INotifyPropertyChanged
 {
-    private string _targetPath = string.Empty;
     private string _outputFileName = string.Empty;
     private string _statusText = "读取中";
 
@@ -26,8 +25,6 @@ public sealed partial class ConversionRow : INotifyPropertyChanged
 
     public OutputPlanItem? SourceItem { get; set; }
 
-    public PlannedOutputItem? PlannedItem { get; set; }
-
     public string? ErrorMessage { get; set; }
 
     public string OutputFileName
@@ -38,19 +35,6 @@ public sealed partial class ConversionRow : INotifyPropertyChanged
             if (_outputFileName != value)
             {
                 _outputFileName = value;
-                OnPropertyChanged();
-            }
-        }
-    }
-
-    public string TargetPath
-    {
-        get => _targetPath;
-        set
-        {
-            if (_targetPath != value)
-            {
-                _targetPath = value;
                 OnPropertyChanged();
             }
         }

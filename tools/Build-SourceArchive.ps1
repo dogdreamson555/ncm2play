@@ -113,9 +113,6 @@ function Ensure-TagLibArchive {
             MaximumRedirection = 10
             ErrorAction = 'Stop'
         }
-        if ((Get-Command Invoke-WebRequest).Parameters.ContainsKey('UseBasicParsing')) {
-            $requestParameters.UseBasicParsing = $true
-        }
         $null = Invoke-WebRequest @requestParameters
 
         $actualHash = Get-Sha256 -Path $partialPath
@@ -199,13 +196,10 @@ function Get-ZipEntrySha256 {
     param([Parameter(Mandatory = $true)][System.IO.Compression.ZipArchiveEntry]$Entry)
 
     $entryStream = $Entry.Open()
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
-        $hash = $sha256.ComputeHash($entryStream)
-        return ([System.BitConverter]::ToString($hash)).Replace('-', '').ToLowerInvariant()
+        return [System.Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($entryStream)).ToLowerInvariant()
     }
     finally {
-        $sha256.Dispose()
         $entryStream.Dispose()
     }
 }
@@ -332,7 +326,6 @@ function New-TagLibSourceArchive {
         $archiveHash = Get-Sha256 -Path $DestinationPath
         $completed = $true
         return [pscustomobject]@{
-            RootName = $rootName
             ExcludedPaths = @($excludedFound | Sort-Object -CaseSensitive)
             Sha256 = $archiveHash
         }

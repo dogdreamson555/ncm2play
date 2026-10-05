@@ -20,7 +20,7 @@ public static class OutputPlanner
                 ?? throw new InvalidOperationException("输出规划缺少目标目录。");
             var targetPath = Path.GetFullPath(Path.Combine(targetDirectory, file.FileName));
             OutputPathSecurity.EnsureContained(rootPath, targetPath);
-            EnsurePathLength(targetPath);
+            OutputPathSecurity.EnsurePathLength(targetPath);
 
             planned.Add(new PlannedOutputItem(
                 file.Item.Source,
@@ -534,7 +534,7 @@ public static class OutputPlanner
         {
             var candidate = OutputPathSecurity.AddCollisionSuffix(requestedName, collisionIndex);
             var existsOnDisk = targetDirectory is not null &&
-                FindExistingCaseInsensitiveFileOrDirectory(targetDirectory, candidate);
+                OutputPathSecurity.ExistsCaseInsensitive(targetDirectory, candidate);
             if (!existsOnDisk && !used.Contains(candidate))
             {
                 used.Add(candidate);
@@ -542,25 +542,6 @@ public static class OutputPlanner
             }
 
             collisionIndex++;
-        }
-    }
-
-    private static bool FindExistingCaseInsensitiveFileOrDirectory(string parentDirectory, string name)
-    {
-        if (!Directory.Exists(parentDirectory))
-        {
-            return false;
-        }
-
-        return Directory.EnumerateFileSystemEntries(parentDirectory)
-            .Any(entry => string.Equals(Path.GetFileName(entry), name, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static void EnsurePathLength(string targetPath)
-    {
-        if (OperatingSystem.IsWindows() && targetPath.Length > 259)
-        {
-            throw new PathTooLongException($"输出路径超过 Windows 当前配置可用的长度：{targetPath}");
         }
     }
 

@@ -701,12 +701,6 @@ public sealed partial class MainWindow : Window
         _currentPlan = null;
         _planError = null;
         var ready = _rows.Where(row => row.SourceItem is not null).ToArray();
-        foreach (var row in ready)
-        {
-            row.PlannedItem = null;
-            row.TargetPath = string.Empty;
-        }
-
         var items = ready.Select(row => row.SourceItem! with
         {
             OutputFormat = SelectedOutputFormat(row.SourceItem!.OutputFormat)
@@ -735,8 +729,6 @@ public sealed partial class MainWindow : Window
                 foreach (var item in plan.Items)
                 {
                     var row = _rowsByPath[item.Source.InputPath];
-                    row.PlannedItem = item;
-                    row.TargetPath = item.TargetPath;
                     row.OutputFileName = item.FileName;
                 }
 
@@ -1137,7 +1129,6 @@ public sealed partial class MainWindow : Window
             var row = _rowsByPath[item.Source.InputPath];
             row.StatusText = "待转换";
             row.ErrorMessage = null;
-            row.TargetPath = item.TargetPath;
         }
 
         SetBusy(true);
@@ -1171,7 +1162,6 @@ public sealed partial class MainWindow : Window
                     };
                     if (item.OutputPath is not null)
                     {
-                        row.TargetPath = item.OutputPath;
                         row.OutputFileName = Path.GetFileName(item.OutputPath);
                     }
                     else if (item.ErrorMessage is not null)

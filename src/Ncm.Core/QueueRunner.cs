@@ -10,11 +10,6 @@ public sealed class NcmQueue
         _maxConcurrency = maxConcurrency;
     }
 
-    public Task<NcmQueueScanResult> ScanAsync(
-        IEnumerable<string> paths,
-        CancellationToken cancellationToken = default) =>
-        NcmQueueScanner.ScanAsync(paths, cancellationToken);
-
     public async Task<NcmQueueResult> RunAsync(
         IReadOnlyList<string> inputPaths,
         Func<string, CancellationToken, Task<string>> processItemAsync,

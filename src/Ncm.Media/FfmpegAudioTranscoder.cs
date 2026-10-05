@@ -402,7 +402,7 @@ internal sealed unsafe class FfmpegAudioTranscoder : IAudioTranscoder
 
             var encoder = _plan.OutputFormat switch
             {
-                Ncm.Core.NcmAudioFormat.Mp3 => FindMp3Encoder(),
+                Ncm.Core.NcmAudioFormat.Mp3 => ffmpeg.avcodec_find_encoder_by_name("libmp3lame"),
                 Ncm.Core.NcmAudioFormat.Flac => ffmpeg.avcodec_find_encoder(AVCodecID.AV_CODEC_ID_FLAC),
                 _ => null
             };
@@ -460,15 +460,6 @@ internal sealed unsafe class FfmpegAudioTranscoder : IAudioTranscoder
                 ffmpeg.avcodec_parameters_from_context(_outputStream->codecpar, _encoderContext),
                 "写入编码参数",
                 _cancellationToken);
-
-            if ((_outputContext->oformat->flags & ffmpeg.AVFMT_GLOBALHEADER) != 0)
-            {
-                _encoderContext->flags |= ffmpeg.AV_CODEC_FLAG_GLOBAL_HEADER;
-                Check(
-                    ffmpeg.avcodec_parameters_from_context(_outputStream->codecpar, _encoderContext),
-                    "写入全局编码参数",
-                    _cancellationToken);
-            }
 
             SwrContext* resampler = null;
             var resamplerResult = ffmpeg.swr_alloc_set_opts2(
@@ -592,22 +583,6 @@ internal sealed unsafe class FfmpegAudioTranscoder : IAudioTranscoder
             {
                 ffmpeg.av_channel_layout_default(&context->ch_layout, _plan.Channels);
             }
-
-            if ((_outputContext->oformat->flags & ffmpeg.AVFMT_GLOBALHEADER) != 0)
-            {
-                context->flags |= ffmpeg.AV_CODEC_FLAG_GLOBAL_HEADER;
-            }
-        }
-
-        private static AVCodec* FindMp3Encoder()
-        {
-            var encoder = ffmpeg.avcodec_find_encoder_by_name("libmp3lame");
-            if (encoder is not null)
-            {
-                return encoder;
-            }
-
-            return null;
         }
 
         private void DecodePacket(AVPacket* packet)
@@ -692,18 +667,10 @@ internal sealed unsafe class FfmpegAudioTranscoder : IAudioTranscoder
                     return;
                 }
 
-                convertedFrame->nb_samples = convertedSamples;
-                Check(
-                    ffmpeg.av_audio_fifo_realloc(_fifo, ffmpeg.av_audio_fifo_size(_fifo) + convertedSamples),
-                    "扩展音频缓冲区",
-                    _cancellationToken);
-                var written = ffmpeg.av_audio_fifo_write(_fifo, (void**)convertedFrame->extended_data, convertedSamples);
-                if (written != convertedSamples)
-                {
-                    throw new MediaExportException("FFmpeg 未能完整缓冲重采样音频帧。");
-                }
-
-                DrainFifo(flush: false);
+                BufferConvertedSamples(
+                    convertedFrame,
+                    convertedSamples,
+                    "FFmpeg 未能完整缓冲重采样音频帧。");
             }
             finally
             {
@@ -769,24 +736,32 @@ internal sealed unsafe class FfmpegAudioTranscoder : IAudioTranscoder
                         return;
                     }
 
-                    frame->nb_samples = convertedSamples;
-                    Check(
-                        ffmpeg.av_audio_fifo_realloc(_fifo, ffmpeg.av_audio_fifo_size(_fifo) + convertedSamples),
-                        "扩展音频缓冲区",
-                        _cancellationToken);
-                    var written = ffmpeg.av_audio_fifo_write(_fifo, (void**)frame->extended_data, convertedSamples);
-                    if (written != convertedSamples)
-                    {
-                        throw new MediaExportException("FFmpeg 未能完整缓冲重采样尾帧。");
-                    }
-
-                    DrainFifo(flush: false);
+                    BufferConvertedSamples(
+                        frame,
+                        convertedSamples,
+                        "FFmpeg 未能完整缓冲重采样尾帧。");
                 }
                 finally
                 {
                     ffmpeg.av_frame_free(&frame);
                 }
             }
+        }
+
+        private void BufferConvertedSamples(AVFrame* frame, int convertedSamples, string writeError)
+        {
+            frame->nb_samples = convertedSamples;
+            Check(
+                ffmpeg.av_audio_fifo_realloc(_fifo, ffmpeg.av_audio_fifo_size(_fifo) + convertedSamples),
+                "扩展音频缓冲区",
+                _cancellationToken);
+            var written = ffmpeg.av_audio_fifo_write(_fifo, (void**)frame->extended_data, convertedSamples);
+            if (written != convertedSamples)
+            {
+                throw new MediaExportException(writeError);
+            }
+
+            DrainFifo(flush: false);
         }
 
         private void DrainFifo(bool flush)

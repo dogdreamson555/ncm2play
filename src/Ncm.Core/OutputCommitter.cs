@@ -61,9 +61,9 @@ public static class OutputCommitter
                 var fileName = OutputPathSecurity.AddCollisionSuffix(item.RequestedFileName, collisionIndex);
                 var targetPath = Path.GetFullPath(Path.Combine(targetDirectory, fileName));
                 OutputPathSecurity.EnsureContained(rootPath, targetPath);
-                EnsurePathLength(targetPath);
+                OutputPathSecurity.EnsurePathLength(targetPath);
 
-                if (ExistsCaseInsensitive(targetDirectory, fileName))
+                if (OutputPathSecurity.ExistsCaseInsensitive(targetDirectory, fileName))
                 {
                     collisionIndex = NextCollisionIndex(collisionIndex);
                     continue;
@@ -74,7 +74,7 @@ public static class OutputCommitter
                     File.Move(fullTemporaryPath, targetPath, overwrite: false);
                     return new OutputCommitResult(targetPath, collisionIndex);
                 }
-                catch (IOException) when (ExistsCaseInsensitive(targetDirectory, fileName))
+                catch (IOException) when (OutputPathSecurity.ExistsCaseInsensitive(targetDirectory, fileName))
                 {
                     collisionIndex = NextCollisionIndex(collisionIndex);
                 }
@@ -105,17 +105,6 @@ public static class OutputCommitter
         }
     }
 
-    private static bool ExistsCaseInsensitive(string directory, string fileName)
-    {
-        if (!Directory.Exists(directory))
-        {
-            return false;
-        }
-
-        return Directory.EnumerateFileSystemEntries(directory)
-            .Any(entry => string.Equals(Path.GetFileName(entry), fileName, StringComparison.OrdinalIgnoreCase));
-    }
-
     private static int NextCollisionIndex(int current)
     {
         if (current == int.MaxValue)
@@ -124,13 +113,5 @@ public static class OutputCommitter
         }
 
         return current + 1;
-    }
-
-    private static void EnsurePathLength(string targetPath)
-    {
-        if (OperatingSystem.IsWindows() && targetPath.Length > 259)
-        {
-            throw new PathTooLongException($"输出路径超过 Windows 当前配置可用的长度：{targetPath}");
-        }
     }
 }

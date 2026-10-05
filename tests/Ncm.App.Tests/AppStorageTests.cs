@@ -6,6 +6,26 @@ namespace Ncm.App.Tests;
 public sealed class AppStorageTests
 {
     [Fact]
+    public void StartupAppendsLogWithoutCreatingSettings()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            AppStorage.Initialize(directory.FullName);
+            AppStorage.Initialize(directory.FullName);
+
+            var lines = File.ReadAllLines(Path.Combine(directory.FullName, "startup.log"));
+            Assert.Equal(2, lines.Length);
+            Assert.All(lines, line => Assert.EndsWith(" started", line, StringComparison.Ordinal));
+            Assert.False(File.Exists(Path.Combine(directory.FullName, "settings.json")));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public void UnavailableStorageDoesNotPreventStartup()
     {
         var directory = Directory.CreateTempSubdirectory();
@@ -51,7 +71,6 @@ public sealed class AppStorageTests
         var dataDirectory = Path.GetFullPath(AppStorage.DataDirectory);
 
         Assert.False(dataDirectory.StartsWith(applicationDirectory, StringComparison.OrdinalIgnoreCase));
-        Assert.StartsWith(dataDirectory, AppStorage.SettingsPath, StringComparison.OrdinalIgnoreCase);
         Assert.StartsWith(dataDirectory, AppStorage.LogPath, StringComparison.OrdinalIgnoreCase);
     }
 }

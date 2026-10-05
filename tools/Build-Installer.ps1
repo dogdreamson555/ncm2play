@@ -197,18 +197,7 @@ function Get-MsBuildProperty {
         throw "Could not read the $PropertyName property from the app project."
     }
 
-    $value = (@($lines) -join [Environment]::NewLine).Trim()
-    if ($value.StartsWith('{')) {
-        $json = $value | ConvertFrom-Json -ErrorAction Stop
-        if ($null -ne $json.Properties) {
-            $property = $json.Properties.PSObject.Properties[$PropertyName]
-            if ($null -ne $property) {
-                return [string]$property.Value
-            }
-        }
-    }
-
-    return $value
+    return (@($lines) -join [Environment]::NewLine).Trim()
 }
 
 function Assert-X64PeExecutable {
@@ -554,7 +543,7 @@ else {
     $requestedSourceDirectory = $null
 }
 
-if ($SkipPublish.IsPresent) {
+if ($ownsTemporarySource) {
     $stageId = [guid]::NewGuid().ToString('N')
     $stageName = ".ncm-installer-publish-$stageId"
     $resolvedSourceDirectory = Join-Path $artifactRoot $stageName
@@ -562,18 +551,9 @@ if ($SkipPublish.IsPresent) {
     if ((Test-Path -LiteralPath $resolvedSourceDirectory) -or (Test-Path -LiteralPath $temporarySourceMarker)) {
         throw 'The generated publish staging path already exists; refusing to reuse it.'
     }
-}
-elseif ($sourceWasProvided) {
-    $resolvedSourceDirectory = $requestedSourceDirectory
 }
 else {
-    $stageId = [guid]::NewGuid().ToString('N')
-    $stageName = ".ncm-installer-publish-$stageId"
-    $resolvedSourceDirectory = Join-Path $artifactRoot $stageName
-    $temporarySourceMarker = Join-Path $artifactRoot "$stageName.owner"
-    if ((Test-Path -LiteralPath $resolvedSourceDirectory) -or (Test-Path -LiteralPath $temporarySourceMarker)) {
-        throw 'The generated publish staging path already exists; refusing to reuse it.'
-    }
+    $resolvedSourceDirectory = $requestedSourceDirectory
 }
 
 if (Test-PathsOverlap -FirstPath $resolvedSourceDirectory -SecondPath $resolvedOutputDirectory) {

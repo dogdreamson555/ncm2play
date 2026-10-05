@@ -8,8 +8,6 @@ public static class AppStorage
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "NcmConverter");
 
-    public static string SettingsPath => Path.Combine(DataDirectory, "settings.json");
-
     public static string LogPath => Path.Combine(DataDirectory, "startup.log");
 
     public static void Initialize() => Initialize(DataDirectory);
@@ -19,17 +17,6 @@ public static class AppStorage
         try
         {
             Directory.CreateDirectory(dataDirectory);
-            var settingsPath = Path.Combine(dataDirectory, "settings.json");
-            try
-            {
-                using var stream = new FileStream(settingsPath, FileMode.CreateNew, FileAccess.Write);
-                using var writer = new StreamWriter(stream, new UTF8Encoding(false));
-                writer.Write("{\"schemaVersion\":1}");
-            }
-            catch (IOException) when (File.Exists(settingsPath))
-            {
-            }
-
             var logPath = Path.Combine(dataDirectory, "startup.log");
             File.AppendAllText(logPath, $"{DateTimeOffset.UtcNow:O} started{Environment.NewLine}", Encoding.UTF8);
         }

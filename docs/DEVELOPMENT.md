@@ -25,7 +25,7 @@ $outputDir = Resolve-Path 'src\Ncm.App\bin\x64\Release\net10.0-windows10.0.26100
 Start-Process (Join-Path $outputDir 'Ncm.App.exe') -WorkingDirectory $outputDir
 ```
 
-程序在 `%LOCALAPPDATA%\NcmConverter` 创建 `settings.json` 占位文件并追加 `startup.log`；存储不可用时仍允许启动。当前尚未保存和恢复界面设置。
+程序在 `%LOCALAPPDATA%\NcmConverter` 追加 `startup.log`；存储不可用时仍允许启动。当前尚未保存和恢复界面设置。
 
 ## 测试
 

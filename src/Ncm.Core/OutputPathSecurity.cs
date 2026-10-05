@@ -157,6 +157,25 @@ internal static class OutputPathSecurity
         }
     }
 
+    public static bool ExistsCaseInsensitive(string directory, string name)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return false;
+        }
+
+        return Directory.EnumerateFileSystemEntries(directory)
+            .Any(entry => string.Equals(Path.GetFileName(entry), name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static void EnsurePathLength(string targetPath)
+    {
+        if (OperatingSystem.IsWindows() && targetPath.Length > WindowsMaxPathLength)
+        {
+            throw new PathTooLongException($"输出路径超过 Windows 当前配置可用的长度：{targetPath}");
+        }
+    }
+
     public static string? FindExistingCaseInsensitiveEntry(string parentDirectory, string name, bool directoryOnly)
     {
         if (!Directory.Exists(parentDirectory))
