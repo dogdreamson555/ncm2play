@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <Version>1.0.4</Version>
+    <Version>1.0.5</Version>
     <Title>NCM 转换器</Title>
     <AssemblyTitle>NCM 转换器</AssemblyTitle>
     <Product>NCM 转换器</Product>
