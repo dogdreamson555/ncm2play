@@ -65,6 +65,49 @@ jobs:
           }
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      - name: Prepare release notes
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $tag = "v$env:APP_VERSION"
+          $setupFileName = "NcmConverter-$env:APP_VERSION-win-x64-setup.exe"
+          $changesPath = "docs/releases/$env:APP_VERSION.md"
+          if (-not (Test-Path -LiteralPath $changesPath -PathType Leaf)) {
+            throw "Write the release changes in $changesPath before publishing."
+          }
+          $changes = Get-Content -LiteralPath $changesPath -Raw -Encoding utf8
+          if ([string]::IsNullOrWhiteSpace($changes)) { throw "Release changes are empty: $changesPath" }
+          $changes = $changes.Trim()
+          $downloadUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag"
+          $notes = @(
+            '将 NCM 音乐文件转换为 MP3 或 FLAC，保留歌曲信息和封面。',
+            '',
+            '## 本次更新',
+            '',
+            $changes,
+            '',
+            '## 下载与安装',
+            '',
+            "- [下载 Windows x64 安装包 $env:APP_VERSION]($downloadUrl/$setupFileName)",
+            '- 支持 Windows 10 1809（内部版本 17763）及以上的 x64 Windows，包括 Windows 11。',
+            '- 离线安装，无需预先安装 .NET 或 Windows App SDK 运行库；默认仅为当前用户安装，无需管理员权限。',
+            '- 升级时直接运行新版本安装包，沿用原安装目录。',
+            '',
+            '## 附件说明',
+            '',
+            '- **安装包（.exe）**：普通用户下载此文件即可。',
+            '- **校验文件（.sha256）**：对应附件的 SHA-256 校验值。',
+            "- [third-party-sources.zip]($downloadUrl/third-party-sources.zip)：第三方组件的对应源码。",
+            '- **Source code**：项目源码与构建脚本，使用软件无需下载。',
+            '',
+            "[第三方许可与声明](https://github.com/$env:GITHUB_REPOSITORY/blob/$tag/licenses/README.md) · [反馈问题](https://github.com/$env:GITHUB_REPOSITORY/issues)"
+          ) -join [Environment]::NewLine
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          [IO.File]::WriteAllText($notesPath, $notes, [Text.UTF8Encoding]::new($false))
+
+      - name: Check release workflow
+        run: .\tools\Test-ReleaseWorkflow.ps1
+
       - name: Restore and test
         run: |
           dotnet restore .\Ncm.sln -p:Platform=x64
@@ -116,11 +159,18 @@ jobs:
           APP_VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          $assets = @('artifacts/installer/NcmConverter-win-x64-setup.exe', 'artifacts/release-sources/third-party-sources.zip')
+          $installerPath = "artifacts/installer/NcmConverter-$env:APP_VERSION-win-x64-setup.exe"
+          $sourceArchivePath = 'artifacts/release-sources/third-party-sources.zip'
+          $assets = @($installerPath, "$installerPath.sha256", $sourceArchivePath, "$sourceArchivePath.sha256")
           foreach ($asset in $assets) {
             if (-not (Test-Path -LiteralPath $asset -PathType Leaf) -or (Get-Item -LiteralPath $asset).Length -le 0) {
               throw "Release asset is missing or empty: $asset"
             }
+          }
+          foreach ($asset in @($installerPath, $sourceArchivePath)) {
+            $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+            $checksum = (Get-Content -LiteralPath "$asset.sha256" -Raw -Encoding utf8).Trim()
+            if ($checksum -ne "$hash *$(Split-Path -Leaf $asset)") { throw "Release checksum does not match: $asset" }
           }
           $tag = "v$env:APP_VERSION"
           $releaseTags = @(& gh api "repos/$env:GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name')
@@ -134,13 +184,6 @@ jobs:
             if ($tagCommit -ne $env:GITHUB_SHA) { throw "Tag $tag belongs to a different commit." }
           }
           $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-          $notes = @(
-            'Windows 10 version 1809 (build 17763) or later and Windows 11 x64 offline installer.',
-            '',
-            "[Third-party notices](https://github.com/$env:GITHUB_REPOSITORY/blob/$tag/licenses/README.md)",
-            "[Corresponding third-party sources](https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/third-party-sources.zip)",
-            'Application source and build scripts are included in the Source code downloads below.'
-          ) -join [Environment]::NewLine
-          [IO.File]::WriteAllText($notesPath, $notes, [Text.UTF8Encoding]::new($false))
+          if (-not (Test-Path -LiteralPath $notesPath -PathType Leaf)) { throw 'Prepared release notes are missing.' }
           & gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "NCM 转换器 $env:APP_VERSION" --notes-file $notesPath --generate-notes --latest=true
           if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed.' }

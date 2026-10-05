@@ -626,7 +626,7 @@ if (Test-Path -LiteralPath $resolvedOutputDirectory) {
     }
 }
 
-$setupFileName = 'NcmConverter-win-x64-setup.exe'
+$setupFileName = "NcmConverter-$Version-win-x64-setup.exe"
 $checksumFileName = "$setupFileName.sha256"
 $finalSetupPath = Join-Path $resolvedOutputDirectory $setupFileName
 $finalChecksumPath = Join-Path $resolvedOutputDirectory $checksumFileName

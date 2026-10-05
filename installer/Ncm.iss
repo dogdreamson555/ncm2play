@@ -29,7 +29,7 @@ AppSupportURL=https://github.com/dogdreamson555/ncm2play/issues
 DefaultDirName={localappdata}\Programs\NcmConverter
 DefaultGroupName=NCM 转换器
 OutputDir={#InstallerOutputDir}
-OutputBaseFilename=NcmConverter-win-x64-setup
+OutputBaseFilename=NcmConverter-{#AppVersion}-win-x64-setup
 SetupLogging=yes
 UninstallDisplayName=NCM 转换器
 UninstallDisplayIcon={app}\Ncm.App.exe
@@ -51,7 +51,11 @@ VersionInfoVersion={#FileVersion}
 WizardStyle=modern
 
 [Tasks]
-Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加快捷方式："; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalShortcuts}"; Flags: unchecked
+
+[InstallDelete]
+Type: files; Name: "{app}\ffmpeg.exe"
+Type: files; Name: "{app}\ffprobe.exe"
 
 [Files]
 Source: "{#AppSourceDir}\*"; DestDir: "{app}"; Excludes: "*.pdb,*.dbg,*.mdb"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -61,7 +65,7 @@ Name: "{autoprograms}\NCM 转换器"; Filename: "{app}\Ncm.App.exe"; WorkingDir:
 Name: "{autodesktop}\NCM 转换器"; Filename: "{app}\Ncm.App.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\Ncm.App.exe"; Description: "安装完成后启动 NCM 转换器"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\Ncm.App.exe"; Description: "{cm:LaunchApp}"; Flags: postinstall nowait skipifsilent
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
@@ -72,3 +76,13 @@ Name: "zhcn"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 [LangOptions]
 DialogFontName=Microsoft YaHei UI
 WelcomeFontName=Microsoft YaHei UI
+
+[CustomMessages]
+en.CreateDesktopIcon=Create a desktop shortcut
+en.AdditionalShortcuts=Additional shortcuts:
+en.LaunchApp=Launch NCM 转换器
+#if IncludeChineseSimplified == "yes"
+zhcn.CreateDesktopIcon=创建桌面快捷方式
+zhcn.AdditionalShortcuts=附加快捷方式：
+zhcn.LaunchApp=安装完成后启动 NCM 转换器
+#endif
