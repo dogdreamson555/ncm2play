@@ -17,7 +17,7 @@ tools/             媒体库、安装器和源码附件构建脚本
 
 ## 构建与运行
 
-使用 [global.json](../global.json) 固定的 .NET 10.0.303 SDK，以及 Visual Studio / Build Tools 的 C++ 桌面开发工具和 Windows SDK。在仓库根目录执行：
+使用符合 [global.json](../global.json) 约束的 .NET SDK（10.0.303 或更新的 10.0.3xx 正式版），以及 Visual Studio / Build Tools 的 C++ 桌面开发工具和 Windows SDK。在仓库根目录执行：
 
 ```powershell
 dotnet build Ncm.sln -c Release -p:Platform=x64
